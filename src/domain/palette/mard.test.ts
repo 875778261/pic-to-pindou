@@ -12,9 +12,11 @@ describe('MARD 291 色', () => {
     expect(new Set(codes).size).toBe(codes.length)
   })
 
-  it('每个色号都有合法屏幕色与 LAB', () => {
+  it('每个色号都有合法屏幕色、系列与 LAB', () => {
     for (const entry of MARD_291.entries) {
       expect(() => hexToRgb(entry.hex)).not.toThrow()
+      expect(entry.series.length).toBeGreaterThan(0)
+      expect(['standard', 'special']).toContain(entry.material)
       expect(Number.isFinite(entry.lab.l)).toBe(true)
       expect(Number.isFinite(entry.lab.a)).toBe(true)
       expect(Number.isFinite(entry.lab.b)).toBe(true)
@@ -39,11 +41,25 @@ describe('MARD 291 色', () => {
       expect(fullCodes.has(entry.code), `291 缺少 ${entry.code}`).toBe(true)
     }
   })
+
+  it('特种色有 70 个，且不进量化候选', () => {
+    const special = MARD_291.entries.filter((entry) => entry.material === 'special')
+    expect(special).toHaveLength(70)
+    expect(MARD_291.quantisationCandidates).toHaveLength(221)
+    expect(MARD_291.quantisationCandidates.every((entry) => entry.material === 'standard')).toBe(
+      true,
+    )
+  })
 })
 
 describe('MARD 221 色', () => {
   it('色号数量为 221', () => {
     expect(MARD_221.entries).toHaveLength(221)
+  })
+
+  it('全部是标准色，量化候选即全量', () => {
+    expect(MARD_221.entries.every((entry) => entry.material === 'standard')).toBe(true)
+    expect(MARD_221.quantisationCandidates).toHaveLength(221)
   })
 
   it('是 291 的子集，且同号同色', () => {

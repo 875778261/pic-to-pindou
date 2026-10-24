@@ -30,7 +30,7 @@ type BeadGrid = { cols: number; rows: number; cells: Uint16Array }
 type Pattern = {
   paletteId: string
   grid: BeadGrid
-  usedCodes: BeadCode[]             // 实际用到的色号，下标与 grid 的 i 对齐
+  usedCodes: BeadCode[]             // 实际用到的色号，按色卡下标升序，与 counts 的非零项一一对应
   counts: number[]                  // 各色号的颗数
 }
 
@@ -45,7 +45,7 @@ type ConvertParams = {
 ```
 
 `beadSizeMm` 刻意不进入转换 —— 同一张图纸在三种豆规格下网格数据完全通用，换规格只是换物理尺寸的换算常数。
-`paletteId` 进入转换参数是因为两档的下标序不同：同一串 `cells` 在两档下指向不同色号。
+`paletteId` 进入转换参数是因为网格只存下标：291 档的图纸拿给 221 档读会越界，档位必须和网格一起流转。
 
 ## 阶段
 
