@@ -30,12 +30,25 @@ export function hexToRgb(hex: string): Rgb {
   }
 }
 
+/** 取整并夹到 0–255：所有通道运算的出口都用它，避免各写一份 */
+export function clampToByte(value: number): number {
+  return Math.round(Math.min(255, Math.max(0, value)))
+}
+
 export function rgbToHex({ r, g, b }: Rgb): string {
-  const toByte = (value: number) => Math.round(Math.min(255, Math.max(0, value)))
-  return `#${[toByte(r), toByte(g), toByte(b)]
-    .map((value) => value.toString(16).padStart(2, '0'))
+  return `#${[r, g, b]
+    .map((value) => clampToByte(value).toString(16).padStart(2, '0'))
     .join('')
     .toUpperCase()}`
+}
+
+/** 三个通道压成一个整数，用作按颜色查表的键 */
+export function packRgb({ r, g, b }: Rgb): number {
+  return (r << 16) | (g << 8) | b
+}
+
+export function unpackRgb(packed: number): Rgb {
+  return { r: (packed >> 16) & 0xff, g: (packed >> 8) & 0xff, b: packed & 0xff }
 }
 
 function toLinear(channel: number): number {
