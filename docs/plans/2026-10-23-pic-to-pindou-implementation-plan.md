@@ -1,6 +1,6 @@
 # 图片转拼豆图纸 · 实施计划
 
-在浏览器内把一张图片转成 Artkal S 色号的拼豆图纸：可预览成品、可手改单格、可导出带色号与用量表的 PNG。PC 与移动端都能用。
+在浏览器内把一张图片转成 MARD 色号的拼豆图纸：可预览成品、可手改单格、可导出带色号与用量表的 PNG。PC 与移动端都能用。
 
 ## 范围
 
@@ -14,29 +14,38 @@ Vite + React 19 + TypeScript + Tailwind CSS + zustand + Vitest + Biome。无路�
 ## 数据模型
 
 ```ts
-type BeadCode = string                                    // "S01"
-type PaletteEntry = { code: BeadCode; name: string; hex: string; lab: Lab }
+type BeadCode = string                                    // "A1"、"ZG3"
+type PaletteEntry = {
+  code: BeadCode
+  series: string                                          // 色号前缀字母，A / ZG / P …
+  material: 'standard' | 'special'                        // 特种色不进量化候选
+  hex: string
+  lab: Lab
+}
 
 /** 0 = 空白格；i + 1 = palette[i] */
 type BeadGrid = { cols: number; rows: number; cells: Uint16Array }
 
+/** 图纸把网格与它所属的色卡档位绑在一起，网格不单独流转 */
+type Pattern = {
+  paletteId: string
+  grid: BeadGrid
+  usedCodes: BeadCode[]             // 实际用到的色号，下标与 grid 的 i 对齐
+  counts: number[]                  // 各色号的颗数
+}
+
 type ConvertParams = {
+  paletteId: string                 // 221 标准档 / 291 全系档
   cols: number; rows: number        // 豆格数，由板数预设或直接输入推导
-  beadSizeMm: 2.6 | 5 | 10          // 只影响成品物理尺寸与颗数换算，不参与转换
   maxColours: number                // K，8–40
   dither: boolean
   blankColours: string[]            // 被当作空白格的源图颜色（sRGB hex）
   brightness: number; contrast: number; saturation: number
 }
-
-type ConvertResult = {
-  grid: BeadGrid
-  usedCodes: BeadCode[]             // 实际用到的色号，下标与 grid 的 i 对齐
-  counts: number[]                  // 各色号的颗数
-}
 ```
 
 `beadSizeMm` 刻意不进入转换 —— 同一张图纸在三种豆规格下网格数据完全通用，换规格只是换物理尺寸的换算常数。
+`paletteId` 进入转换参数是因为两档的下标序不同：同一串 `cells` 在两档下指向不同色号。
 
 ## 阶段
 
@@ -45,11 +54,11 @@ type ConvertResult = {
 1. `npm create vite` 初始化 React + TS 模板，清掉示例代码。
 2. 装 Tailwind、zustand、Vitest、Biome，配好 lint 与 test 脚本。
 3. 建目录骨架：`domain/` `workers/` `render/` `state/` `ui/` `export/`。
-4. 落地色卡 `domain/palette/artkal-s.ts`：159 条 `code / name / hex`，LAB 在模块初始化时算一次。
+4. 落地色卡 `domain/palette/mard.ts`：221 与 291 两档，每条 `code / series / hex`，LAB 在模块初始化时算一次。由 `scripts/build-mard-palette.mjs` 从数据快照生成。
 
-**验收**：`npm run dev` 起得来；`npm run test` 能跑通一条占位测试；色卡条数断言为 159，色号无重复。
+**验收**：`npm run dev` 起得来；`npm run test` 能跑通一条占位测试；两档条数分别断言为 221 与 291，色号无重复，且 221 完整落在 291 内且同号同色。
 
-> 色卡 HEX 目前来自第三方整理，**色号编号可信、HEX 有偏差风险**。P0 内拿官方色卡核对一遍，有出入以官方为准并记在提交说明里。
+> MARD 没有官方 RGB 发布，屏幕色只能证到「与所选上游一致」。核对结论与差异见 `docs/reference/README.md`（ADR-0005、ADR-0006）。
 
 ### P1 domain 基础（纯函数 + 单测）
 
