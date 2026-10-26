@@ -1,13 +1,14 @@
 /**
  * 预览台：豆形 / 扁平两套画法共用一份视口摆放，画布上可缩放、平移、双击回到适应窗口。
  *
- * 点一下（没有拖动）仍然是把那颗豆的色号交出去，标成不摆豆。
+ * 查看态点一下豆是把那个色号标成不摆豆；编辑态落笔涂色，按住空格才挪画布（ADR-0013）。
  */
 
 import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { cellAt } from '../domain/grid'
+import { cellPath, paintGrid } from '../domain/edit'
+import { BLANK_CELL, cellAt, cellIndex } from '../domain/grid'
 import { paletteById } from '../domain/palette/registry'
-import { type Pattern, paletteEntryForCell } from '../domain/pattern'
+import { createPattern, type Pattern, paletteEntryForCell } from '../domain/pattern'
 import {
   cellAtPoint,
   fitView,
@@ -18,6 +19,8 @@ import {
   zoomAt,
 } from '../domain/viewport'
 import { drawPreview } from '../render/preview'
+import { useConversion } from '../state/store'
+import { PaintBar } from './PaintBar'
 
 type PreviewStageProps = {
   pattern: Pattern | null
@@ -44,6 +47,12 @@ const EMPTY_VIEW: Viewport = {
   panY: 0,
 }
 
+/** 一笔涂色：这次按下到抬起中途划过的格，最后一起记成一步撤销 */
+type Stroke = {
+  paints: Map<number, number>
+  last: { col: number; row: number }
+}
+
 export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageProps) {
   const observerRef = useRef<ResizeObserver | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -51,8 +60,26 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
   const [style, setStyle] = useState<PreviewStyle>('bead')
   const [view, setView] = useState<Viewport>(EMPTY_VIEW)
   const [degraded, setDegraded] = useState(false)
+  const [spaceHeld, setSpaceHeld] = useState(false)
   const pickTimerRef = useRef<number | null>(null)
   const dragRef = useRef<{ x: number; y: number; from: Viewport; moved: boolean } | null>(null)
+  const strokeRef = useRef<Stroke | null>(null)
+
+  const paintMode = useConversion((state) => state.paintMode)
+  const brush = useConversion((state) => state.brush)
+  const setPaintMode = useConversion((state) => state.setPaintMode)
+  const paintDraft = useConversion((state) => state.paintDraft)
+  const commitPaint = useConversion((state) => state.commitPaint)
+  const undo = useConversion((state) => state.undo)
+  const redo = useConversion((state) => state.redo)
+  const status = useConversion((state) => state.status)
+  const pendingDiscard = useConversion((state) => state.pendingDiscard)
+  const confirmDiscard = useConversion((state) => state.confirmDiscard)
+  const cancelDiscard = useConversion((state) => state.cancelDiscard)
+
+  const editing = paintMode === 'edit'
+  // 图纸还在算、或者正问着要不要丢手改时不落笔：这时的改动会被下一次重算整个盖掉
+  const paintable = status === 'ready' && pendingDiscard === null
 
   // 卸载时清掉还没落地的点选
   useEffect(
@@ -63,6 +90,44 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
     },
     [],
   )
+
+  // 空格按下时拖动是挪画布，松开又归画笔；撤销快捷键也在这里
+  useEffect(() => {
+    const isTyping = (target: EventTarget | null) =>
+      target instanceof HTMLElement &&
+      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code === 'Space' && !isTyping(event.target)) {
+        event.preventDefault()
+        setSpaceHeld(true)
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        if (isTyping(event.target)) {
+          return
+        }
+        event.preventDefault()
+        if (event.shiftKey) {
+          redo()
+        } else {
+          undo()
+        }
+      }
+    }
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === 'Space') {
+        setSpaceHeld(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [undo, redo])
 
   // 量的是承载区而不是画布本身：画布绝对定位铺满它，尺寸只由布局决定
   const attachSurface = useCallback((node: HTMLDivElement | null) => {
@@ -140,12 +205,96 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
     }
   }, [])
 
+  /** 指针落在哪一格；落在网格外给 null */
+  const cellUnderPointer = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (!pattern) {
+      return null
+    }
+    const rect = event.currentTarget.getBoundingClientRect()
+    return cellAtPoint(
+      placement(view),
+      event.clientX - rect.left,
+      event.clientY - rect.top,
+      pattern.grid.cols,
+      pattern.grid.rows,
+    )
+  }
+
+  /** 手里这支笔画下去是哪个格值：编码 0 是橡皮，色号取色卡下标加一 */
+  const brushValue = (): number | null => {
+    if (!palette) {
+      return null
+    }
+    if (brush.kind === 'eraser') {
+      return BLANK_CELL
+    }
+    const entry = palette.byCode.get(brush.code)
+    return entry ? entry.index + 1 : null
+  }
+
+  /** 指针底下那一格该落什么值；指针在网格外、或在手里没笔时给 null */
+  const paintHit = (event: PointerEvent<HTMLCanvasElement>) => {
+    const point = cellUnderPointer(event)
+    const value = brushValue()
+    if (!point || value === null || !pattern) {
+      return null
+    }
+    return { point, value, index: cellIndex(pattern.grid, point.col, point.row) }
+  }
+
+  /** 把这一笔已经划过的格整体重画一遍图纸 */
+  const flushStroke = () => {
+    const stroke = strokeRef.current
+    // 当前图纸从 store 取：一笔之内闭包里那张可能还没跟上
+    const current = useConversion.getState().pattern
+    if (!stroke || !current) {
+      return
+    }
+    const nextGrid = paintGrid(
+      current.grid,
+      [...stroke.paints].map(([index, value]) => ({ index, value })),
+    )
+    if (nextGrid === current.grid) {
+      return
+    }
+    paintDraft(createPattern(paletteById(current.paletteId), nextGrid))
+  }
+
   const handlePointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId)
+
+    if (editing && paintable && !spaceHeld && event.button === 0) {
+      const hit = paintHit(event)
+      if (!hit) {
+        return
+      }
+      strokeRef.current = { paints: new Map([[hit.index, hit.value]]), last: hit.point }
+      flushStroke()
+      return
+    }
+
     dragRef.current = { x: event.clientX, y: event.clientY, from: view, moved: false }
   }
 
   const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
+    const stroke = strokeRef.current
+    if (stroke) {
+      const hit = paintHit(event)
+      if (!hit || !pattern) {
+        return
+      }
+      if (hit.point.col === stroke.last.col && hit.point.row === stroke.last.row) {
+        return
+      }
+      // 指针走快了会跳过中间的格，补齐才不会漏涂
+      for (const index of cellPath(pattern.grid, stroke.last, hit.point)) {
+        stroke.paints.set(index, hit.value)
+      }
+      stroke.last = hit.point
+      flushStroke()
+      return
+    }
+
     const drag = dragRef.current
     if (!drag) {
       return
@@ -160,19 +309,19 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
   }
 
   const handlePointerUp = (event: PointerEvent<HTMLCanvasElement>) => {
-    const drag = dragRef.current
-    dragRef.current = null
-    if (!drag || drag.moved || !pattern || !palette) {
+    if (strokeRef.current) {
+      strokeRef.current = null
+      // 一次按下到抬起只记一步
+      commitPaint()
       return
     }
-    const rect = event.currentTarget.getBoundingClientRect()
-    const point = cellAtPoint(
-      placement(view),
-      event.clientX - rect.left,
-      event.clientY - rect.top,
-      pattern.grid.cols,
-      pattern.grid.rows,
-    )
+
+    const drag = dragRef.current
+    dragRef.current = null
+    if (!drag || drag.moved || !pattern || !palette || editing) {
+      return
+    }
+    const point = cellUnderPointer(event)
     if (!point) {
       return
     }
@@ -199,6 +348,8 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
     setView((current) => fitView(current))
   }
 
+  const cursor = editing ? (spaceHeld ? 'cursor-grab' : 'cursor-crosshair') : 'cursor-grab'
+
   return (
     <div className="flex min-h-[420px] flex-col gap-2 overflow-hidden rounded-xl border border-neutral-200 bg-white p-4">
       {pattern ? (
@@ -206,15 +357,24 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
           <div ref={attachSurface} className="relative min-h-0 flex-1">
             <canvas
               ref={attachCanvas}
-              aria-label="图纸预览，可缩放平移；点一颗豆把它标成不摆豆"
-              className="absolute inset-0 cursor-crosshair touch-none"
+              aria-label={
+                editing
+                  ? '图纸预览，编辑中：拖动涂色，按住空格拖动平移'
+                  : '图纸预览，可缩放平移；点一颗豆把它标成不摆豆'
+              }
+              className={`absolute inset-0 touch-none ${cursor}`}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={() => {
                 dragRef.current = null
+                // 已经落到图纸上的那一笔照样算一步，不留在半空
+                if (strokeRef.current) {
+                  strokeRef.current = null
+                  commitPaint()
+                }
               }}
-              onDoubleClick={handleDoubleClick}
+              onDoubleClick={editing ? undefined : handleDoubleClick}
             />
 
             <div className="absolute top-2 right-2 flex items-center gap-2">
@@ -223,6 +383,28 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
                   格太小，已自动用扁平
                 </span>
               ) : null}
+              <button
+                type="button"
+                aria-label="回到适应窗口"
+                title="回到适应窗口"
+                className="rounded-md border border-neutral-200 bg-white/90 px-2 py-1 text-neutral-700 text-xs hover:border-neutral-400"
+                onClick={() => setView((current) => fitView(current))}
+              >
+                适应
+              </button>
+              <button
+                type="button"
+                aria-label="切换编辑态"
+                aria-pressed={editing}
+                className={`rounded-md border px-2 py-1 text-xs ${
+                  editing
+                    ? 'border-neutral-900 bg-neutral-900 text-white'
+                    : 'border-neutral-200 bg-white/90 text-neutral-700 hover:border-neutral-400'
+                }`}
+                onClick={() => setPaintMode(editing ? 'view' : 'edit')}
+              >
+                {editing ? '编辑中' : '编辑'}
+              </button>
               <button
                 type="button"
                 aria-label="切换画法"
@@ -239,11 +421,39 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
                 {style === 'bead' ? '豆形' : '扁平'}
               </button>
             </div>
-          </div>
 
+            {pendingDiscard !== null ? (
+              <div
+                role="alertdialog"
+                aria-label="重算会丢弃手改"
+                className="absolute top-2 left-1/2 flex -translate-x-1/2 flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 shadow-lg"
+              >
+                <p className="text-amber-900 text-xs">重算会丢弃 {pendingDiscard} 处手改。</p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className="rounded-md border border-amber-300 bg-white px-2 py-1 text-amber-900 text-xs hover:border-amber-500"
+                    onClick={cancelDiscard}
+                  >
+                    放弃改动
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md bg-neutral-900 px-2 py-1 text-white text-xs hover:bg-neutral-800"
+                    onClick={confirmDiscard}
+                  >
+                    继续重算
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+          {editing ? <PaintBar pattern={pattern} /> : null}
           <p className="text-neutral-500 text-xs">
-            滚轮缩放、拖动平移、双击回到适应窗口；点一颗豆把它标成不摆豆。
-          </p>
+            {editing
+              ? '拖动涂色、按住空格拖动平移；一笔算一步，撤销在画笔条右侧。手改不保存，刷新就没了。'
+              : '滚轮缩放、拖动平移、双击回到适应窗口；点一颗豆把它标成不摆豆。'}
+          </p>{' '}
         </>
       ) : (
         <p className="flex flex-1 items-center justify-center text-center text-neutral-400 text-sm">
