@@ -10,6 +10,7 @@ import { ExportButton } from './ui/ExportButton'
 import { ParameterPanel } from './ui/ParameterPanel'
 import { PatternSummary } from './ui/PatternSummary'
 import { PreviewStage } from './ui/PreviewStage'
+import { UsagePanel } from './ui/UsagePanel'
 
 const PLACEHOLDER_BY_STATUS: Record<ConvertStatus, string> = {
   idle: '还没有图片。在左边选一张，或者把图直接拖进来。',
@@ -29,7 +30,7 @@ export default function App() {
   const markBlank = useConversion((state) => state.markBlank)
 
   return (
-    <main className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-6 px-5 py-8">
+    <main className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-6 px-5 py-8">
       <header>
         <h1 className="font-semibold text-2xl text-neutral-900">图片转拼豆图纸</h1>
         <p className="mt-1 text-neutral-600 text-sm">
@@ -37,7 +38,7 @@ export default function App() {
         </p>
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)_240px]">
         <aside className="flex flex-col gap-4">
           <DropZone
             onFile={(file) => {
@@ -70,6 +71,8 @@ export default function App() {
           placeholder={PLACEHOLDER_BY_STATUS[status]}
           onPickCode={markBlank}
         />
+
+        <UsagePanel pattern={pattern} />
       </div>
     </main>
   )
