@@ -41,6 +41,9 @@ const WHEEL_ZOOM_RATE = 0.0015
 /** 点选要等这么久才落地，留出双击的判定窗口 */
 const DOUBLE_CLICK_GUARD_MS = 220
 
+/** 「这一格是 X」的提示停留多久 */
+const PICKED_HINT_MS = 3200
+
 const EMPTY_VIEW: Viewport = {
   cols: 1,
   rows: 1,
@@ -88,7 +91,10 @@ export function PreviewStage({
   const [view, setView] = useState<Viewport>(EMPTY_VIEW)
   const [degraded, setDegraded] = useState(false)
   const [spaceHeld, setSpaceHeld] = useState(false)
+  /** 点到的那一格是哪个色号，说给用户听几秒 */
+  const [pickedCode, setPickedCode] = useState<string | null>(null)
   const pickTimerRef = useRef<number | null>(null)
+  const pickedTimerRef = useRef<number | null>(null)
   const dragRef = useRef<{ x: number; y: number; from: Viewport; moved: boolean } | null>(null)
   const strokeRef = useRef<Stroke | null>(null)
   const pointersRef = useRef(new Map<number, PointerSpot>())
@@ -115,6 +121,9 @@ export function PreviewStage({
     () => () => {
       if (pickTimerRef.current !== null) {
         window.clearTimeout(pickTimerRef.current)
+      }
+      if (pickedTimerRef.current !== null) {
+        window.clearTimeout(pickedTimerRef.current)
       }
     },
     [],
@@ -426,6 +435,15 @@ export function PreviewStage({
     pickTimerRef.current = window.setTimeout(() => {
       pickTimerRef.current = null
       onPickCode(code)
+      // 顺手说一声这一格是哪个色号：标空白往往正是为了先认色
+      setPickedCode(code)
+      if (pickedTimerRef.current !== null) {
+        window.clearTimeout(pickedTimerRef.current)
+      }
+      pickedTimerRef.current = window.setTimeout(() => {
+        pickedTimerRef.current = null
+        setPickedCode(null)
+      }, PICKED_HINT_MS)
     }, DOUBLE_CLICK_GUARD_MS)
   }
 
@@ -472,6 +490,11 @@ export function PreviewStage({
             />
 
             <div className="absolute top-2 right-2 flex items-center gap-2">
+              {pickedCode ? (
+                <span className="rounded-md bg-neutral-900/75 px-2 py-1 text-[10px] text-white">
+                  这一格 {pickedCode}，已标成不摆豆
+                </span>
+              ) : null}
               {degraded ? (
                 <span className="rounded-md bg-neutral-900/75 px-2 py-1 text-[10px] text-white">
                   格太小，已自动用扁平
