@@ -6,6 +6,8 @@
  */
 
 import type { Rgb } from './colour'
+import { cropRegion, type SourceRegion } from './crop'
+import type { ConvertFit } from './params'
 
 export type SampledGrid = {
   cols: number
@@ -33,7 +35,7 @@ export function usesNearestNeighbour(
 type WeightedSpan = { pixel: number; weight: number }
 
 /** 目标格在源图上覆盖到哪些像素，各占多少比例 */
-function spansFor(sourceLength: number, targetLength: number): WeightedSpan[][] {
+function spansFor(sourceLength: number, targetLength: number, offset: number): WeightedSpan[][] {
   const spans: WeightedSpan[][] = []
   for (let target = 0; target < targetLength; target += 1) {
     const start = (target * sourceLength) / targetLength
@@ -42,7 +44,7 @@ function spansFor(sourceLength: number, targetLength: number): WeightedSpan[][] 
     for (let pixel = Math.floor(start); pixel < Math.ceil(end); pixel += 1) {
       const weight = Math.min(end, pixel + 1) - Math.max(start, pixel)
       if (weight > 0) {
-        cellSpans.push({ pixel, weight })
+        cellSpans.push({ pixel: offset + pixel, weight })
       }
     }
     spans.push(cellSpans)
@@ -53,15 +55,17 @@ function spansFor(sourceLength: number, targetLength: number): WeightedSpan[][] 
 function sampleNearest(
   pixels: Uint8ClampedArray,
   width: number,
-  height: number,
+  region: SourceRegion,
   cols: number,
   rows: number,
 ): SampledGrid {
   const colours: Rgb[] = new Array(cols * rows)
   for (let row = 0; row < rows; row += 1) {
-    const sourceRow = Math.min(height - 1, Math.floor((row * height) / rows))
+    const sourceRow =
+      region.y + Math.min(region.height - 1, Math.floor((row * region.height) / rows))
     for (let col = 0; col < cols; col += 1) {
-      const sourceCol = Math.min(width - 1, Math.floor((col * width) / cols))
+      const sourceCol =
+        region.x + Math.min(region.width - 1, Math.floor((col * region.width) / cols))
       const offset = (sourceRow * width + sourceCol) * 4
       colours[row * cols + col] = {
         r: pixels[offset] ?? 0,
@@ -76,12 +80,12 @@ function sampleNearest(
 function sampleAreaAverage(
   pixels: Uint8ClampedArray,
   width: number,
-  height: number,
+  region: SourceRegion,
   cols: number,
   rows: number,
 ): SampledGrid {
-  const columnSpans = spansFor(width, cols)
-  const rowSpans = spansFor(height, rows)
+  const columnSpans = spansFor(region.width, cols, region.x)
+  const rowSpans = spansFor(region.height, rows, region.y)
   const colours: Rgb[] = new Array(cols * rows)
 
   for (let row = 0; row < rows; row += 1) {
@@ -125,6 +129,7 @@ export function sampleToGrid(
   height: number,
   cols: number,
   rows: number,
+  fit: ConvertFit = 'fill',
 ): SampledGrid {
   if (width <= 0 || height <= 0) {
     throw new Error(`源图尺寸非法：${width} × ${height}`)
@@ -132,7 +137,9 @@ export function sampleToGrid(
   if (pixels.length < width * height * 4) {
     throw new Error(`像素数据不足：期望 ${width * height * 4}，实际 ${pixels.length}`)
   }
-  return usesNearestNeighbour(width, height, cols, rows)
-    ? sampleNearest(pixels, width, height, cols, rows)
-    : sampleAreaAverage(pixels, width, height, cols, rows)
+
+  const region = cropRegion({ width, height }, cols, rows, fit)
+  return usesNearestNeighbour(region.width, region.height, cols, rows)
+    ? sampleNearest(pixels, width, region, cols, rows)
+    : sampleAreaAverage(pixels, width, region, cols, rows)
 }

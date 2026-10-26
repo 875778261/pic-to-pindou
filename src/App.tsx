@@ -1,11 +1,12 @@
 /**
  * 应用外壳。
  *
- * 这一版只打通「上传 → 预览」：参数固定（一块 29 × 29 板、最多 16 色、抖动关闭），不导出。
+ * 这一版打通「上传 → 调参 → 预览」：尺寸、豆规格、色号上限、明暗、抖动都可调，还不导出。
  */
 
 import { type ConvertStatus, useConversion } from './state/store'
 import { DropZone } from './ui/DropZone'
+import { ParameterPanel } from './ui/ParameterPanel'
 import { PatternSummary } from './ui/PatternSummary'
 import { PreviewStage } from './ui/PreviewStage'
 
@@ -30,7 +31,7 @@ export default function App() {
       <header>
         <h1 className="font-semibold text-2xl text-neutral-900">图片转拼豆图纸</h1>
         <p className="mt-1 text-neutral-600 text-sm">
-          拖一张图进来，立刻看到摆成一块 29 × 29 拼豆板是什么样。
+          拖一张图进来，定好尺寸和色号上限，立刻看到摆成拼豆是什么样。
         </p>
       </header>
 
@@ -41,6 +42,8 @@ export default function App() {
               void loadFile(file)
             }}
           />
+
+          <ParameterPanel />
 
           {pattern ? <PatternSummary pattern={pattern} source={source} /> : null}
 

@@ -285,4 +285,53 @@ describe('转换管线', () => {
     expectConverted(outcome)
     expect(outcome.pattern.usedCodes).toHaveLength(1)
   })
+
+  it('裁切装图时保住原图中段、剪掉两侧，格子的色号据此变化', () => {
+    const palette = MARD_291
+    const [left, middle, right] = [palette.entries[0], palette.entries[60], palette.entries[120]]
+    if (!left || !middle || !right) {
+      throw new Error('色卡条目缺失，测试数据前提不成立')
+    }
+    // 120 × 60 上是三条各 40 列的纯色竖条，压到 3 × 3 方格：网格 1:1，原图 2:1
+    const source = imageFrom(120, 60, (col) =>
+      hexToRgb((col < 40 ? left : col < 80 ? middle : right).hex),
+    )
+
+    const filled = convert({
+      source,
+      params: defaultConvertParams({ cols: 3, rows: 3, fit: 'fill' }),
+      palette,
+    })
+    const cropped = convert({
+      source,
+      params: defaultConvertParams({ cols: 3, rows: 3, fit: 'crop' }),
+      palette,
+    })
+    expectConverted(filled)
+    expectConverted(cropped)
+
+    // 铺满时三条竖条各占一列，三个色号互不相同
+    const filledCodes = [0, 1, 2].map((col) => codeAt(palette, filled.pattern, col, 0))
+    expect(new Set(filledCodes).size).toBe(3)
+
+    // 居中裁切剪掉左右各 30 列，剩下 30–89：两侧竖条各只剩 10 列，中间那条完整保留，
+    // 所以后两格落在同一个色号上，第一格仍是左边那条
+    const croppedCodes = [0, 1, 2].map((col) => codeAt(palette, cropped.pattern, col, 0))
+    expect(croppedCodes[0]).toBe(filledCodes[0])
+    expect(croppedCodes[1]).not.toBe(croppedCodes[0])
+    expect(croppedCodes[2]).toBe(croppedCodes[1])
+  })
+
+  it('原图比例与网格一致时，裁切不裁任何东西，结果与铺满逐格相同', () => {
+    const palette = MARD_291
+    const source = gradientImage(60, 60)
+
+    const filled = convert({ source, params: defaultConvertParams({ fit: 'fill' }), palette })
+    const cropped = convert({ source, params: defaultConvertParams({ fit: 'crop' }), palette })
+    expectConverted(filled)
+    expectConverted(cropped)
+
+    expect(Array.from(cropped.pattern.grid.cells)).toEqual(Array.from(filled.pattern.grid.cells))
+    expect(cropped.pattern.counts).toEqual(filled.pattern.counts)
+  })
 })

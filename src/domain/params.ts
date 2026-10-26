@@ -13,11 +13,19 @@ export const MAX_GRID_SIDE = 200
 /** 一块 29 × 29 拼豆板 */
 export const PEGBOARD_SIDE = 29
 
+/** 装图方式，见 ADR-0007 */
+export type ConvertFit = 'fill' | 'crop'
+
 export type ConvertParams = {
   /** 221 标准档 / 291 全系档 */
   paletteId: string
   cols: number
   rows: number
+  /**
+   * 原图怎么装进网格：整图铺满，或居中裁切（ADR-0007）。
+   * 只有这两种——拉伸与留白都被否决。
+   */
+  fit: ConvertFit
   /** 最多用几个色号，K */
   maxColours: number
   /** 误差扩散抖动。默认关闭：会产出零散色点，可能要为一格开一包豆 */
@@ -35,12 +43,13 @@ export type ConvertParams = {
   saturation: number
 }
 
-/** #3 的固定默认参数：一块板、最多 16 色、抖动关闭、不调色 */
+/** 默认参数：一块板、最多 16 色、抖动关闭、不调色、铺满 */
 export function defaultConvertParams(overrides: Partial<ConvertParams> = {}): ConvertParams {
   return {
     paletteId: DEFAULT_PALETTE_ID,
     cols: PEGBOARD_SIDE,
     rows: PEGBOARD_SIDE,
+    fit: 'fill',
     maxColours: 16,
     dither: false,
     blankColours: [],

@@ -68,7 +68,14 @@ export function convert(input: ConvertInput): ConvertOutcome {
     }
   }
 
-  const sampled = sampleToGrid(source.pixels, source.width, source.height, params.cols, params.rows)
+  const sampled = sampleToGrid(
+    source.pixels,
+    source.width,
+    source.height,
+    params.cols,
+    params.rows,
+    params.fit,
+  )
   const adjusted = adjustColours(sampled.colours, params)
 
   const blankSet = new Set<number>(params.blankColours.map((hex) => packRgb(hexToRgb(hex))))
