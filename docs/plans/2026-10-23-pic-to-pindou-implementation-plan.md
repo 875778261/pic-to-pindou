@@ -40,7 +40,7 @@ type ConvertParams = {
   fit: 'fill' | 'crop'              // 装图方式：铺满 / 居中裁切（ADR-0007）
   maxColours: number                // K，8–40
   dither: boolean
-  blankColours: string[]            // 被当作空白格的源图颜色（sRGB hex）
+  blankCodes: string[]              // 被标成不摆豆的色号（ADR-0010）
   brightness: number; contrast: number; saturation: number
 }
 ```

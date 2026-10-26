@@ -1,5 +1,5 @@
 /**
- * 参数面板：尺寸、豆规格、色号上限、明暗、抖动。
+ * 参数面板：尺寸、豆规格、色号上限、空白色号、明暗、抖动。
  *
  * 尺寸有两条路——板数预设（用满 N 块板，取该板数拼出来的网格 + 居中裁切）与自由输入
  * （锁比例时不裁切，见 ADR-0007）。面板对当前走的是哪条路给出明示，用户不用猜画面有没有被剪。
@@ -9,6 +9,7 @@ import { BEAD_SIZES } from '../domain/bead-size'
 import { cropShare } from '../domain/crop'
 import { GRID_PRESETS } from '../domain/grid-size'
 import { useConversion } from '../state/store'
+import { BlankCodes } from './BlankCodes'
 import { ChoiceGroup } from './ChoiceGroup'
 import { ColourAdjustments } from './ColourAdjustments'
 import { NumberField } from './NumberField'
@@ -134,6 +135,13 @@ export function ParameterPanel() {
             display={`上限 ${params.maxColours} · 实际用了 ${pattern?.usedCodes.length ?? 0}`}
             onChange={(maxColours) => updateParams({ maxColours })}
           />
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>空白色号</SectionTitle>
+        <div className="mt-2">
+          <BlankCodes />
         </div>
       </div>
 

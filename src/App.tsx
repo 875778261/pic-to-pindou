@@ -26,6 +26,7 @@ export default function App() {
   const source = useConversion((state) => state.source)
   const notice = useConversion((state) => state.notice)
   const loadFile = useConversion((state) => state.loadFile)
+  const markBlank = useConversion((state) => state.markBlank)
 
   return (
     <main className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-6 px-5 py-8">
@@ -64,7 +65,11 @@ export default function App() {
           ) : null}
         </aside>
 
-        <PreviewStage pattern={pattern} placeholder={PLACEHOLDER_BY_STATUS[status]} />
+        <PreviewStage
+          pattern={pattern}
+          placeholder={PLACEHOLDER_BY_STATUS[status]}
+          onPickCode={markBlank}
+        />
       </div>
     </main>
   )

@@ -221,7 +221,7 @@ describe('转换管线', () => {
     expect(accepted.pattern.grid.cols).toBe(200)
   })
 
-  it('被设为空白的颜色变成空白格，且不计入任何色号的颗数', () => {
+  it('被设为空白的色号变成空白格，且不计入任何色号的颗数', () => {
     const palette = MARD_291
     const beadColour = palette.entries[120]
     if (!beadColour) {
@@ -232,7 +232,7 @@ describe('转换管线', () => {
 
     const outcome = convert({
       source,
-      params: defaultConvertParams({ blankColours: [beadColour.hex] }),
+      params: defaultConvertParams({ blankCodes: [beadColour.code] }),
       palette,
     })
     expectConverted(outcome)
@@ -244,6 +244,162 @@ describe('转换管线', () => {
     expect(pattern.counts.reduce((sum, value) => sum + value, 0)).toBe(15 * 29)
   })
 
+  it('标一个色号不会连带抹掉相邻的另一个色号', () => {
+    const palette = MARD_291
+    const left = palette.entries[120]
+    const right = palette.entries[121]
+    if (!left || !right) {
+      throw new Error('色卡条目缺失，测试数据前提不成立')
+    }
+    const source = imageFrom(58, 58, (col) => (col < 28 ? hexToRgb(left.hex) : hexToRgb(right.hex)))
+
+    const outcome = convert({
+      source,
+      params: defaultConvertParams({ blankCodes: [left.code], maxColours: 2 }),
+      palette,
+    })
+    expectConverted(outcome)
+
+    expect(cellAt(outcome.pattern.grid, 0, 0)).toBe(0)
+    expect(codeAt(palette, outcome.pattern, 28, 0)).toBe(right.code)
+    expect(outcome.pattern.usedCodes).not.toContain(left.code)
+  })
+
+  it('照片状白底标一次就整片变空白，主体色号不受影响', () => {
+    const palette = MARD_291
+    const subject = palette.entries[40]
+    if (!subject) {
+      throw new Error('色卡条目缺失，测试数据前提不成立')
+    }
+    // 白底每格与纯白差 ±2，逐格数值各不相同
+    const source = imageFrom(58, 58, (col, row) => {
+      const inSubject = col >= 18 && col < 40 && row >= 18 && row < 40
+      if (inSubject) {
+        return hexToRgb(subject.hex)
+      }
+      const tint = ((col * 3 + row * 5) % 5) - 2
+      return { r: 255 + tint, g: 255 + tint, b: 255 + tint }
+    })
+
+    const before = convert({ source, params: defaultConvertParams(), palette })
+    expectConverted(before)
+    const backgroundCode = codeAt(palette, before.pattern, 0, 0)
+    if (!backgroundCode) {
+      throw new Error('背景格没有色号，测试数据前提不成立')
+    }
+    expect(codeAt(palette, before.pattern, 27, 27)).toBe(backgroundCode)
+
+    const after = convert({
+      source,
+      params: defaultConvertParams({ blankCodes: [backgroundCode] }),
+      palette,
+    })
+    expectConverted(after)
+
+    expect(cellAt(after.pattern.grid, 0, 0)).toBe(0)
+    expect(cellAt(after.pattern.grid, 27, 27)).toBe(0)
+    expect(after.pattern.usedCodes).not.toContain(backgroundCode)
+    expect(codeAt(palette, after.pattern, 14, 14)).toBe(subject.code)
+  })
+
+  it('被标空白的色号不占色号上限，余量留给剩下的画面', () => {
+    const palette = MARD_291
+    const background = palette.entries[120]
+    const foregroundA = palette.entries[60]
+    const foregroundB = palette.entries[61]
+    if (!background || !foregroundA || !foregroundB) {
+      throw new Error('色卡条目缺失，测试数据前提不成立')
+    }
+    // 三竖条：背景 / 前景 A / 前景 B，三色抢两个名额
+    const source = imageFrom(58, 58, (col) => {
+      if (col < 20) {
+        return hexToRgb(background.hex)
+      }
+      return hexToRgb(col < 40 ? foregroundA.hex : foregroundB.hex)
+    })
+
+    const outcome = convert({
+      source,
+      params: defaultConvertParams({ blankCodes: [background.code], maxColours: 2 }),
+      palette,
+    })
+    expectConverted(outcome)
+
+    expect([...outcome.pattern.usedCodes].sort()).toEqual(
+      [foregroundA.code, foregroundB.code].sort(),
+    )
+    expect(cellAt(outcome.pattern.grid, 0, 0)).toBe(0)
+  })
+
+  it('一次标多个色号时，它们一起变空白', () => {
+    const palette = MARD_291
+    const background = palette.entries[120]
+    const middle = palette.entries[60]
+    const kept = palette.entries[61]
+    if (!background || !middle || !kept) {
+      throw new Error('色卡条目缺失，测试数据前提不成立')
+    }
+    const source = imageFrom(58, 58, (col) => {
+      if (col < 20) {
+        return hexToRgb(background.hex)
+      }
+      return hexToRgb(col < 40 ? middle.hex : kept.hex)
+    })
+
+    const outcome = convert({
+      source,
+      params: defaultConvertParams({ blankCodes: [background.code, middle.code] }),
+      palette,
+    })
+    expectConverted(outcome)
+
+    expect(cellAt(outcome.pattern.grid, 0, 0)).toBe(0)
+    expect(cellAt(outcome.pattern.grid, 14, 0)).toBe(0)
+    expect(codeAt(palette, outcome.pattern, 28, 0)).toBe(kept.code)
+    expect(outcome.pattern.usedCodes).toEqual([kept.code])
+  })
+
+  it('开抖动时空白格照样留空，不被误差扩散填上', () => {
+    const palette = MARD_291
+    const background = palette.entries[120]
+    const subject = palette.entries[40]
+    if (!background || !subject) {
+      throw new Error('色卡条目缺失，测试数据前提不成立')
+    }
+    const source = imageFrom(58, 58, (col, row) => {
+      const inSubject = col >= 18 && col < 40 && row >= 18 && row < 40
+      return hexToRgb(inSubject ? subject.hex : background.hex)
+    })
+
+    const outcome = convert({
+      source,
+      params: defaultConvertParams({ blankCodes: [background.code], dither: true }),
+      palette,
+    })
+    expectConverted(outcome)
+
+    for (let row = 0; row < 29; row += 1) {
+      for (let col = 0; col < 29; col += 1) {
+        const inSubject = col >= 9 && col < 20 && row >= 9 && row < 20
+        if (!inSubject) {
+          expect(cellAt(outcome.pattern.grid, col, row)).toBe(0)
+        }
+      }
+    }
+  })
+
+  it('标了色卡里没有的色号，图纸与原样一致', () => {
+    const palette = MARD_291
+    const params = defaultConvertParams({ maxColours: 8 })
+    const source = gradientImage(120, 90)
+
+    const plain = convert({ source, params, palette })
+    const withUnknown = convert({ source, params: { ...params, blankCodes: ['ZZ999'] }, palette })
+    expectConverted(plain)
+    expectConverted(withUnknown)
+
+    expect(Array.from(withUnknown.pattern.grid.cells)).toEqual(Array.from(plain.pattern.grid.cells))
+  })
   it('全图都被设为空白时给出全空白图纸，不报错', () => {
     const palette = MARD_291
     const beadColour = palette.entries[0]
@@ -253,7 +409,7 @@ describe('转换管线', () => {
 
     const outcome = convert({
       source: solidImage(29, 29, hexToRgb(beadColour.hex)),
-      params: defaultConvertParams({ blankColours: [beadColour.hex] }),
+      params: defaultConvertParams({ blankCodes: [beadColour.code] }),
       palette,
     })
     expectConverted(outcome)

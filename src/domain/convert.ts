@@ -6,9 +6,9 @@
  */
 
 import { adjustColours } from './adjust'
-import { hexToRgb, packRgb } from './colour'
+import type { Rgb } from './colour'
 import { createBlankGrid } from './grid'
-import type { Palette } from './palette/types'
+import type { BeadCode, Palette } from './palette/types'
 import { type ConvertParams, MAX_GRID_SIDE } from './params'
 import { createPattern, type Pattern } from './pattern'
 import { mapColours, mapColoursWithDither, selectMedoids } from './quantise'
@@ -54,6 +54,58 @@ function assertParams(params: ConvertParams, palette: Palette): void {
   }
 }
 
+/**
+ * 量化一遍：在没被标成空白的格上选色，再把每格映射到选中的色号。
+ * 返回各格的色卡下标，空洞留给空白格。excludedCodes 为空表示这一遍不排除任何色号。
+ */
+function assignColours(
+  palette: Palette,
+  params: ConvertParams,
+  colours: readonly Rgb[],
+  excludedCodes: ReadonlySet<BeadCode> | undefined,
+  blankMask: Uint8Array | null,
+): number[] {
+  const paintable = blankMask ? colours.filter((_, cell) => !blankMask[cell]) : colours
+  if (paintable.length === 0) {
+    return []
+  }
+  const medoids = selectMedoids(palette, paintable, params.maxColours, excludedCodes)
+  if (medoids.length === 0) {
+    return []
+  }
+  return params.dither
+    ? mapColoursWithDither(palette, medoids, colours, params.cols, params.rows, blankMask)
+    : mapColours(palette, medoids, colours)
+}
+
+/**
+ * 哪些格是空白色号：按未标空白的量化结果认，落在被标色号上的格就是用户点的那种豆。
+ * 认完之后再量化第二遍，让空白色号腾出的名额回到剩下的画面上（ADR-0010）。
+ */
+function blankMaskFor(
+  palette: Palette,
+  indexes: readonly number[],
+  blankCodes: ReadonlySet<BeadCode>,
+): Uint8Array | null {
+  if (blankCodes.size === 0) {
+    return null
+  }
+  const mask = new Uint8Array(indexes.length)
+  let masked = 0
+  for (let cell = 0; cell < indexes.length; cell += 1) {
+    const index = indexes[cell]
+    if (index === undefined) {
+      continue
+    }
+    const entry = palette.entries[index]
+    if (entry && blankCodes.has(entry.code)) {
+      mask[cell] = 1
+      masked += 1
+    }
+  }
+  return masked > 0 ? mask : null
+}
+
 export function convert(input: ConvertInput): ConvertOutcome {
   const { source, params, palette } = input
   assertParams(params, palette)
@@ -78,23 +130,27 @@ export function convert(input: ConvertInput): ConvertOutcome {
   )
   const adjusted = adjustColours(sampled.colours, params)
 
-  const blankSet = new Set<number>(params.blankColours.map((hex) => packRgb(hexToRgb(hex))))
-  const paintable = adjusted.filter((colour) => !blankSet.has(packRgb(colour)))
+  // 色卡里没有的色号直接忽略：它说的不是这个档位里的颜色
+  const blankCodes = new Set<BeadCode>(params.blankCodes.filter((code) => palette.byCode.has(code)))
+
+  let indexes = assignColours(palette, params, adjusted, undefined, null)
+  let blankMask: Uint8Array | null = null
+  const recognized = blankMaskFor(palette, indexes, blankCodes)
+  if (recognized) {
+    blankMask = recognized
+    indexes = assignColours(palette, params, adjusted, blankCodes, blankMask)
+  }
 
   const grid = createBlankGrid(params.cols, params.rows)
-  if (paintable.length > 0) {
-    const medoids = selectMedoids(palette, paintable, params.maxColours)
-    const indexes = params.dither
-      ? mapColoursWithDither(palette, medoids, adjusted, params.cols, params.rows)
-      : mapColours(palette, medoids, adjusted)
-
-    for (let cell = 0; cell < adjusted.length; cell += 1) {
-      const colour = adjusted[cell]
-      if (!colour || blankSet.has(packRgb(colour))) {
-        continue
-      }
-      grid.cells[cell] = (indexes[cell] ?? 0) + 1
+  for (let cell = 0; cell < adjusted.length; cell += 1) {
+    if (blankMask?.[cell]) {
+      continue
     }
+    const index = indexes[cell]
+    if (index === undefined) {
+      continue
+    }
+    grid.cells[cell] = index + 1
   }
 
   return { status: 'converted', pattern: createPattern(palette, grid) }

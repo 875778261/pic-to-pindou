@@ -19,7 +19,7 @@ import {
   rgbToLab,
   unpackRgb,
 } from './colour'
-import type { Palette, PaletteEntry } from './palette/types'
+import type { BeadCode, Palette, PaletteEntry } from './palette/types'
 
 type CandidateDistances = {
   entries: readonly PaletteEntry[]
@@ -211,14 +211,18 @@ function swapDelta(
 
 const MAX_SWAP_ROUNDS = 8
 
+const NO_EXCLUSIONS: ReadonlySet<BeadCode> = new Set()
+
 /**
  * 选出不超过 maxColours 个色号，返回它们在量化候选集里的位置。
  * 实际可选色数少于上限时只选到实际色数为止，不会为了凑数塞进用不到的色号。
+ * 被标成空白的色号不参与选色，也不占名额。
  */
 export function selectMedoids(
   palette: Palette,
   colours: readonly Rgb[],
   maxColours: number,
+  excludedCodes: ReadonlySet<BeadCode> = NO_EXCLUSIONS,
 ): number[] {
   if (!Number.isInteger(maxColours) || maxColours < 1) {
     throw new Error(`限色数必须是正整数：${maxColours}`)
@@ -229,9 +233,14 @@ export function selectMedoids(
 
   const candidates: number[] = []
   for (let position = 0; position < matrix.size; position += 1) {
-    if ((weights[position] ?? 0) > 0) {
-      candidates.push(position)
+    if ((weights[position] ?? 0) <= 0) {
+      continue
     }
+    const entry = matrix.entries[position]
+    if (entry && excludedCodes.has(entry.code)) {
+      continue
+    }
+    candidates.push(position)
   }
 
   const target = Math.min(maxColours, candidates.length)
@@ -347,6 +356,7 @@ function spreadError(
 /**
  * 误差扩散抖动（Floyd–Steinberg）。
  * 只作为可选后处理：抖动能更接近原图，但会产出零散色点，可能要为一格开一包豆。
+ * blankMask 标出的格不产豆：既不往外扩散误差，也不接住邻居的误差。
  */
 export function mapColoursWithDither(
   palette: Palette,
@@ -354,6 +364,7 @@ export function mapColoursWithDither(
   colours: readonly Rgb[],
   cols: number,
   rows: number,
+  blankMask: Uint8Array | null = null,
 ): number[] {
   const selected = medoidEntries(palette, medoidPositions)
   if (selected.length === 0) {
@@ -366,6 +377,9 @@ export function mapColoursWithDither(
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
       const cell = row * cols + col
+      if (blankMask?.[cell]) {
+        continue
+      }
       const colour = colours[cell] ?? { r: 0, g: 0, b: 0 }
       const offset = cell * 3
       const working: Rgb = {

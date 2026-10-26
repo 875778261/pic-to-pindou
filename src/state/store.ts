@@ -8,6 +8,7 @@
 import { create } from 'zustand'
 import { type BeadSizeId, beadSizeById } from '../domain/bead-size'
 import { colsForRows, GRID_PRESETS, rowsForCols } from '../domain/grid-size'
+import type { BeadCode } from '../domain/palette/types'
 import { type ConvertFit, type ConvertParams, defaultConvertParams } from '../domain/params'
 import type { Pattern } from '../domain/pattern'
 import { createConvertClient } from '../workers/convertClient'
@@ -46,6 +47,9 @@ type ConversionStore = {
   setAspectLocked: (locked: boolean) => void
   setBeadSize: (beadSizeId: BeadSizeId) => void
   updateParams: (patch: TunableParams) => void
+  /** 把这个色号标成不摆豆；换图后不清空，空白色号是跨图通用的判断 */
+  markBlank: (code: BeadCode) => void
+  unmarkBlank: (code: BeadCode) => void
 }
 
 const convertClient = createConvertClient()
@@ -75,6 +79,12 @@ export const useConversion = create<ConversionStore>((set, get) => {
 
   /** 重开比例锁定时以哪一边为准：用户最后改过的那一边 */
   let lastEditedSide: 'cols' | 'rows' = 'cols'
+
+  /** 改参数只有一条路：换上新的参数对象，再请一次重算 */
+  function commitParams(next: ConvertParams): void {
+    set({ params: next })
+    reconvert.request()
+  }
 
   /** 用当前参数转一次；换图与改参数都走这里，保证只有一条转换路径 */
   async function convertCurrent(): Promise<void> {
@@ -208,8 +218,26 @@ export const useConversion = create<ConversionStore>((set, get) => {
     },
 
     updateParams(patch) {
-      set({ params: { ...get().params, ...patch } })
-      reconvert.request()
+      commitParams({ ...get().params, ...patch })
+    },
+
+    markBlank(code) {
+      const { params } = get()
+      if (params.blankCodes.includes(code)) {
+        return
+      }
+      commitParams({ ...params, blankCodes: [...params.blankCodes, code] })
+    },
+
+    unmarkBlank(code) {
+      const { params } = get()
+      if (!params.blankCodes.includes(code)) {
+        return
+      }
+      commitParams({
+        ...params,
+        blankCodes: params.blankCodes.filter((item) => item !== code),
+      })
     },
   }
 })

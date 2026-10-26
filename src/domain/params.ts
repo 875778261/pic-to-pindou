@@ -6,6 +6,7 @@
  */
 
 import { DEFAULT_PALETTE_ID } from './palette/registry'
+import type { BeadCode } from './palette/types'
 
 /** 网格单边上限。200 × 200 = 40000 颗，是用户真会去摆的量，再往上应该分图 */
 export const MAX_GRID_SIDE = 200
@@ -31,10 +32,11 @@ export type ConvertParams = {
   /** 误差扩散抖动。默认关闭：会产出零散色点，可能要为一格开一包豆 */
   dither: boolean
   /**
-   * 被当作空白格的颜色，sRGB hex。
-   * 比对的是预处理之后的颜色，也就是预览里看到的那个颜色。
+   * 被标成空白（不摆豆）的色号。
+   * 按色号而不是源图颜色比对：照片上的白底逐格都有色差，只有落到同一个色号才整片抹得掉
+   * （ADR-0010）。
    */
-  blankColours: string[]
+  blankCodes: BeadCode[]
   /** -100 ~ 100，0 为原图 */
   brightness: number
   /** 0 ~ 2，1 为原图 */
@@ -43,7 +45,7 @@ export type ConvertParams = {
   saturation: number
 }
 
-/** 默认参数：一块板、最多 16 色、抖动关闭、不调色、铺满 */
+/** 默认参数：一块板、最多 16 色、抖动关闭、不调色、铺满、没有空白色 */
 export function defaultConvertParams(overrides: Partial<ConvertParams> = {}): ConvertParams {
   return {
     paletteId: DEFAULT_PALETTE_ID,
@@ -52,7 +54,7 @@ export function defaultConvertParams(overrides: Partial<ConvertParams> = {}): Co
     fit: 'fill',
     maxColours: 16,
     dither: false,
-    blankColours: [],
+    blankCodes: [],
     brightness: 0,
     contrast: 1,
     saturation: 1,
