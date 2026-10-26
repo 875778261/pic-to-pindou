@@ -27,8 +27,6 @@ const COL_GUTTER = 32
 const HEADER_HEIGHT = 88
 const LEGEND_GAP = 24
 const LEGEND_ROW_HEIGHT = 26
-/** 图例一列最多排多少行，再多就并排下一列 */
-const LEGEND_MAX_ROWS = 20
 
 /**
  * 图纸上的字体。测量宽度与真正落笔必须用同一串，字体在这里定死，两边不再各写一份。
@@ -41,8 +39,11 @@ export const SHEET_TYPE = {
   legendCount: `400 13px ${SHEET_FONT_FAMILY}`,
 } as const
 
-/** 图例的横向排布：色块边长、色号起点、颗数起点，都相对条目左边缘 */
-export const LEGEND_METRICS = { swatch: 14, codeOffset: 22, countOffset: 76 } as const
+/**
+ * 图例的横向排布。色块边长、色号起点、颗数起点都相对条目左边缘；
+ * 条目间距是相邻两条之间的距离。颗数前不留名称列（ADR-0009）
+ */
+export const LEGEND_METRICS = { swatch: 14, codeOffset: 22, countOffset: 66, itemGap: 16 } as const
 
 export type Rect = { x: number; y: number; width: number; height: number }
 
@@ -67,7 +68,7 @@ export type ExportLayoutInput = {
   legendEntryCount: number
   /** 抬头那行字的宽度，由合成层量好传进来 */
   titleWidth?: number
-  /** 图例一条的宽度，同上。比网格一列还宽时画布要跟着长 */
+  /** 图例一条量出来的宽度（不含条目间距），同上。比网格一列还宽时画布要跟着长 */
   legendItemWidth?: number
 }
 
@@ -92,12 +93,29 @@ export function coordinateIndexes(length: number, step: number): number[] {
   return indexes
 }
 
-function legendShape(legendEntryCount: number): { columns: number; rows: number } {
+/** 单条图例占的横向宽度：量出来的条目宽加上条目间距 */
+function slotWidthOf(legendItemWidth: number): number {
+  return legendItemWidth > 0 ? legendItemWidth + LEGEND_METRICS.itemGap : 0
+}
+
+/** 图例的换行：每行放几条由纸面可用宽度与单条槽宽决定，再按条目数推行数（ADR-0008） */
+function legendShape(
+  legendEntryCount: number,
+  availableWidth: number,
+  legendItemWidth: number,
+): { columns: number; rows: number } {
   if (legendEntryCount <= 0) {
     return { columns: 1, rows: 0 }
   }
-  const columns = Math.ceil(legendEntryCount / LEGEND_MAX_ROWS)
-  return { columns, rows: Math.ceil(legendEntryCount / columns) }
+  const slotWidth = slotWidthOf(legendItemWidth)
+  // 单条宽度还没量出来就不猜能并排几条，按一列排
+  const perRow = slotWidth > 0 ? Math.max(1, Math.floor(availableWidth / slotWidth)) : 1
+  return { columns: perRow, rows: Math.ceil(legendEntryCount / perRow) }
+}
+
+/** 第几条图例落在第几列第几行。行优先填，与图例的换行方向一致 */
+export function legendSlot(index: number, columns: number): { column: number; row: number } {
+  return { column: index % columns, row: Math.floor(index / columns) }
 }
 
 function clampCellSize(value: number): number {
@@ -111,15 +129,25 @@ export function planExportLayout(input: ExportLayoutInput): ExportLayout {
     throw new Error(`网格尺寸必须是正整数：${cols} × ${rows}`)
   }
 
-  const legend = legendShape(legendEntryCount)
   const { maxCanvasSide, maxCanvasArea } = EXPORT_LIMITS
 
-  const canvasSizeFor = (cellSize: number) => {
+  /** 某个格宽下的纸面尺寸。格宽与图例尺寸互相依赖，一次算全 */
+  const paperAt = (cellSize: number) => {
     const gridWidth = cols * cellSize
-    const columnWidth = Math.max(Math.floor(gridWidth / legend.columns), legendItemWidth)
+    // 抬头可能比网格还宽，图例跟着纸面摊开，不跟着网格摊
+    const availableWidth = Math.max(gridWidth, titleWidth)
+    const legend = legendShape(legendEntryCount, availableWidth, legendItemWidth)
+    const columnWidth = Math.max(
+      Math.floor(availableWidth / legend.columns),
+      slotWidthOf(legendItemWidth),
+    )
+    const legendWidth = legend.columns * columnWidth
     // 纸面右侧要同时容得下网格、抬头文字与图例，三者取宽者
-    const contentWidth = Math.max(gridWidth, titleWidth, legend.columns * columnWidth)
+    const contentWidth = Math.max(gridWidth, titleWidth, legendWidth)
     return {
+      legend,
+      columnWidth,
+      legendWidth,
       width: MARGIN + ROW_GUTTER + contentWidth + MARGIN,
       height:
         MARGIN +
@@ -133,12 +161,8 @@ export function planExportLayout(input: ExportLayoutInput): ExportLayout {
 
   // 首选格宽放不下就一路往下缩：单边与面积两条上限，任一顶到都要让路
   const fitsCaps = (cellSize: number) => {
-    const size = canvasSizeFor(cellSize)
-    return (
-      size.width <= maxCanvasSide &&
-      size.height <= maxCanvasSide &&
-      size.width * size.height <= maxCanvasArea
-    )
+    const { width, height } = paperAt(cellSize)
+    return width <= maxCanvasSide && height <= maxCanvasSide && width * height <= maxCanvasArea
   }
 
   let cellSize: number = EXPORT_LIMITS.preferredCellSize
@@ -147,17 +171,13 @@ export function planExportLayout(input: ExportLayoutInput): ExportLayout {
   }
   cellSize = clampCellSize(cellSize)
 
+  const paper = paperAt(cellSize)
   const grid: Rect = {
     x: MARGIN + ROW_GUTTER,
     y: MARGIN + HEADER_HEIGHT + COL_GUTTER,
     width: cols * cellSize,
     height: rows * cellSize,
   }
-
-  const legendY = grid.y + grid.height + LEGEND_GAP
-  const columns = legend.columns
-  const columnWidth = Math.max(Math.floor(grid.width / columns), legendItemWidth)
-  const canvas = canvasSizeFor(cellSize)
 
   return {
     cellSize,
@@ -166,21 +186,15 @@ export function planExportLayout(input: ExportLayoutInput): ExportLayout {
     grid,
     legend: {
       x: grid.x,
-      y: legendY,
-      width: columns * columnWidth,
-      height: legend.rows * LEGEND_ROW_HEIGHT,
-      columns,
-      rows: legend.rows,
+      y: grid.y + grid.height + LEGEND_GAP,
+      width: paper.legendWidth,
+      height: paper.legend.rows * LEGEND_ROW_HEIGHT,
+      columns: paper.legend.columns,
+      rows: paper.legend.rows,
       rowHeight: LEGEND_ROW_HEIGHT,
-      columnWidth,
+      columnWidth: paper.columnWidth,
     },
     header: { x: grid.x, y: MARGIN, lineHeight: 28 },
-    canvas: {
-      width: canvas.width,
-      height:
-        legend.rows > 0
-          ? legendY + legend.rows * LEGEND_ROW_HEIGHT + MARGIN
-          : grid.y + grid.height + MARGIN,
-    },
+    canvas: { width: paper.width, height: paper.height },
   }
 }

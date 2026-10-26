@@ -20,6 +20,7 @@ import {
   coordinateIndexes,
   type ExportLayout,
   LEGEND_METRICS,
+  legendSlot,
   planExportLayout,
   SHEET_FONT_FAMILY,
   SHEET_TYPE,
@@ -48,7 +49,7 @@ function textColourOn(hex: string): string {
 
 /** 图例一条的文字。量宽度与落笔共用这一句，改格式不会只改一半 */
 function legendItemText(entry: LegendEntry): string {
-  return `${entry.name} · ${entry.count} 颗`
+  return `${entry.count} 颗`
 }
 
 /** 缩字号直到塞得进格子，色号不会被相邻格压掉 */
@@ -208,15 +209,14 @@ function drawLegend(
   if (layout.legend.rows === 0) {
     return
   }
-  const { x, y, rowHeight, columnWidth } = layout.legend
+  const { x, y, rowHeight, columnWidth, columns } = layout.legend
   const { swatch, codeOffset, countOffset } = LEGEND_METRICS
 
   context.textAlign = 'left'
   context.textBaseline = 'middle'
 
   entries.forEach((entry, index) => {
-    const column = Math.floor(index / layout.legend.rows)
-    const row = index % layout.legend.rows
+    const { column, row } = legendSlot(index, columns)
     const itemX = x + column * columnWidth
     const itemY = y + row * rowHeight
 

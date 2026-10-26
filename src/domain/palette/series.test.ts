@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { materialOf, seriesDisplayName, seriesLabel, seriesOf } from './series'
+import { materialOf, seriesOf } from './series'
 
 describe('系列推导', () => {
   it('从色号前缀取系列', () => {
@@ -26,20 +26,6 @@ describe('材质判定', () => {
   it('其余系列是特种色', () => {
     for (const code of ['P1', 'R28', 'ZG8', 'Y5', 'Q1', 'T1']) {
       expect(materialOf(code)).toBe('special')
-    }
-  })
-})
-
-describe('系列显示名', () => {
-  it('有可信语义的系列带中文', () => {
-    expect(seriesDisplayName('A')).toBe('A 黄橙')
-    expect(seriesDisplayName('ZG')).toBe('ZG 珠光')
-  })
-
-  it('没有可信语义的系列只出字母，不编造', () => {
-    for (const series of ['P', 'R', 'Q', 'T', 'Y']) {
-      expect(seriesLabel(series)).toBeUndefined()
-      expect(seriesDisplayName(series)).toBe(series)
     }
   })
 })

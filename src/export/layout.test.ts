@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { labelsCellCodes } from '../domain/pattern'
-import { coordinateIndexes, EXPORT_LIMITS, planExportLayout } from './layout'
+import { coordinateIndexes, EXPORT_LIMITS, legendSlot, planExportLayout } from './layout'
 
 describe('导出排版', () => {
   it('一格 24 像素，网格区域正好是格数乘格宽', () => {
@@ -79,11 +79,49 @@ describe('导出排版', () => {
     )
   })
 
-  it('图例条目少时排成一列', () => {
+  it('图例每行条数由纸面宽度与单条宽度决定，容量装得下所有条目', () => {
+    // 29 格 × 24 像素 = 696 宽；单条 100 加间距 16 共 116 → 每行 6 条，40 条排 7 行
+    const layout = planExportLayout({
+      cols: 29,
+      rows: 29,
+      legendEntryCount: 40,
+      legendItemWidth: 100,
+    })
+
+    expect(layout.legend.columns).toBe(6)
+    expect(layout.legend.rows).toBe(7)
+    expect(layout.legend.rows * layout.legend.columns).toBeGreaterThanOrEqual(40)
+  })
+
+  it('宽纸上图例摊成少数几行，不按条目数把列算死', () => {
+    const layout = planExportLayout({
+      cols: 200,
+      rows: 200,
+      legendEntryCount: 40,
+      legendItemWidth: 150,
+    })
+
+    expect(layout.legend.rows * layout.legend.columns).toBeGreaterThanOrEqual(40)
+    expect(layout.legend.rows).toBeLessThan(5)
+  })
+
+  it('不传单条宽度时按一列排，条目少也排成一列', () => {
     const layout = planExportLayout({ cols: 29, rows: 29, legendEntryCount: 5 })
 
     expect(layout.legend.columns).toBe(1)
     expect(layout.legend.rows).toBe(5)
+  })
+
+  it('单条比纸面还宽时仍至少占一条，不会排成零列', () => {
+    const layout = planExportLayout({
+      cols: 8,
+      rows: 5,
+      legendEntryCount: 3,
+      legendItemWidth: 400,
+    })
+
+    expect(layout.legend.columns).toBe(1)
+    expect(layout.legend.rows).toBe(3)
   })
 
   it('没有用色时不排图例，也不留空高度', () => {
@@ -131,6 +169,21 @@ describe('导出排版', () => {
 
     expect(narrow.legend.columnWidth).toBeLessThan(300)
     expect(wide.legend.columnWidth).toBeGreaterThanOrEqual(300)
+  })
+})
+
+describe('图例条目落格', () => {
+  it('行优先填：排满一行才换下一行', () => {
+    // 每行 6 条：第 0 条落在左上，第 5 条是首行末位，第 6 条换到第二行首位
+    expect(legendSlot(0, 6)).toEqual({ column: 0, row: 0 })
+    expect(legendSlot(5, 6)).toEqual({ column: 5, row: 0 })
+    expect(legendSlot(6, 6)).toEqual({ column: 0, row: 1 })
+    expect(legendSlot(39, 6)).toEqual({ column: 3, row: 6 })
+  })
+
+  it('一列时逐行往下排', () => {
+    expect(legendSlot(0, 1)).toEqual({ column: 0, row: 0 })
+    expect(legendSlot(4, 1)).toEqual({ column: 0, row: 4 })
   })
 })
 

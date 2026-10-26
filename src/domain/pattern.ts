@@ -5,7 +5,6 @@
  */
 
 import { type BeadGrid, BLANK_CELL, countBeads } from './grid'
-import { seriesDisplayName } from './palette/series'
 import type { BeadCode, Palette, PaletteEntry } from './palette/types'
 
 /**
@@ -44,11 +43,9 @@ export function paletteEntryForCell(palette: Palette, cell: number): PaletteEntr
   return cell === BLANK_CELL ? undefined : palette.entries[cell - 1]
 }
 
-/** 图例里的一行 */
+/** 图例里的一行。色号是唯一标识：MARD 没有官方色名，系列也没有可证的语义（ADR-0009） */
 export type LegendEntry = {
   code: BeadCode
-  /** 名称取系列名：MARD 没有官方色名，编一个只会误导（ADR-0005） */
-  name: string
   count: number
   hex: string
 }
@@ -70,7 +67,6 @@ export function legendEntries(pattern: Pattern, palette: Palette): LegendEntry[]
       return [
         {
           code: entry.code,
-          name: seriesDisplayName(entry.series),
           count,
           hex: entry.hex,
           index: entry.index,

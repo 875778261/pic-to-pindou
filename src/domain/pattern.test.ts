@@ -92,7 +92,7 @@ describe('图例', () => {
     expect(entries.map((entry) => entry.count)).toEqual([3, 1, 1])
   })
 
-  it('每项带色号、系列名、颗数与原色', () => {
+  it('每项带色号、颗数与原色，不带名称', () => {
     const grid = createBlankGrid(2, 1)
     setCell(grid, 0, 0, 1)
     setCell(grid, 1, 0, 1)
@@ -101,7 +101,6 @@ describe('图例', () => {
     const entry = MARD_291.entries[0]
     expect(first).toEqual({
       code: entry?.code,
-      name: 'A 黄橙',
       count: 2,
       hex: entry?.hex,
     })
