@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { createBlankGrid, setCell, totalBeads } from './grid'
 import { MARD_221, MARD_291 } from './palette/mard'
-import { createPattern, patternBelongsTo } from './pattern'
+import {
+  createPattern,
+  LABELLED_CELL_LIMIT,
+  labelsCellCodes,
+  legendEntries,
+  patternBelongsTo,
+} from './pattern'
 
 describe('图纸', () => {
   it('颗数与色号由网格和色卡推出', () => {
@@ -65,5 +71,83 @@ describe('图纸', () => {
     const pattern = createPattern(MARD_221, createBlankGrid(2, 2))
     expect(patternBelongsTo(pattern, MARD_221)).toBe(true)
     expect(patternBelongsTo(pattern, MARD_291)).toBe(false)
+  })
+})
+
+describe('图例', () => {
+  it('按颗数降序，同颗数按色卡顺序', () => {
+    const grid = createBlankGrid(5, 1)
+    setCell(grid, 0, 0, 3)
+    setCell(grid, 1, 0, 3)
+    setCell(grid, 2, 0, 3)
+    setCell(grid, 3, 0, 5)
+    setCell(grid, 4, 0, 1)
+
+    const entries = legendEntries(createPattern(MARD_291, grid), MARD_291)
+    expect(entries.map((entry) => entry.code)).toEqual([
+      MARD_291.entries[2]?.code,
+      MARD_291.entries[0]?.code,
+      MARD_291.entries[4]?.code,
+    ])
+    expect(entries.map((entry) => entry.count)).toEqual([3, 1, 1])
+  })
+
+  it('每项带色号、系列名、颗数与原色', () => {
+    const grid = createBlankGrid(2, 1)
+    setCell(grid, 0, 0, 1)
+    setCell(grid, 1, 0, 1)
+
+    const [first] = legendEntries(createPattern(MARD_291, grid), MARD_291)
+    const entry = MARD_291.entries[0]
+    expect(first).toEqual({
+      code: entry?.code,
+      name: 'A 黄橙',
+      count: 2,
+      hex: entry?.hex,
+    })
+  })
+
+  it('空白格不进图例', () => {
+    const grid = createBlankGrid(2, 1)
+    setCell(grid, 0, 0, 2)
+
+    const entries = legendEntries(createPattern(MARD_291, grid), MARD_291)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.code).toBe(MARD_291.entries[1]?.code)
+  })
+
+  it('同一张图纸两次算出完全一样的图例', () => {
+    const grid = createBlankGrid(4, 2)
+    for (let index = 0; index < grid.cells.length; index += 1) {
+      grid.cells[index] = (index % 4) + 1
+    }
+
+    const pattern = createPattern(MARD_291, grid)
+    expect(legendEntries(pattern, MARD_291)).toEqual(legendEntries(pattern, MARD_291))
+  })
+
+  it('色卡档位对不上时不硬算，直接报错', () => {
+    const pattern = createPattern(MARD_291, createBlankGrid(1, 1))
+    expect(() => legendEntries(pattern, MARD_221)).toThrow()
+  })
+})
+
+describe('格内色号标注', () => {
+  it('单边到上限为止都要标', () => {
+    expect(LABELLED_CELL_LIMIT).toBe(40)
+    expect(labelsCellCodes(1, 1)).toBe(true)
+    expect(labelsCellCodes(29, 29)).toBe(true)
+    expect(labelsCellCodes(40, 1)).toBe(true)
+    expect(labelsCellCodes(40, 40)).toBe(true)
+  })
+
+  it('长短边取长者，任一维过密就不标', () => {
+    expect(labelsCellCodes(41, 41)).toBe(false)
+    expect(labelsCellCodes(40, 41)).toBe(false)
+    expect(labelsCellCodes(41, 1)).toBe(false)
+    // 2 块板（29 × 58）第二维已过 40，所以只有 1 块板的方形网格标格内色号
+    expect(labelsCellCodes(29, 58)).toBe(false)
+    expect(labelsCellCodes(58, 58)).toBe(false)
+    expect(labelsCellCodes(200, 200)).toBe(false)
   })
 })

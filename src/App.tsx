@@ -1,11 +1,12 @@
 /**
  * 应用外壳。
  *
- * 这一版打通「上传 → 调参 → 预览」：尺寸、豆规格、色号上限、明暗、抖动都可调，还不导出。
+ * 这一版打通「上传 → 调参 → 预览 → 导出 PNG 图纸」。
  */
 
 import { type ConvertStatus, useConversion } from './state/store'
 import { DropZone } from './ui/DropZone'
+import { ExportButton } from './ui/ExportButton'
 import { ParameterPanel } from './ui/ParameterPanel'
 import { PatternSummary } from './ui/PatternSummary'
 import { PreviewStage } from './ui/PreviewStage'
@@ -46,6 +47,8 @@ export default function App() {
           <ParameterPanel />
 
           {pattern ? <PatternSummary pattern={pattern} source={source} /> : null}
+
+          <ExportButton />
 
           {notice ? (
             <p

@@ -2,7 +2,7 @@
  * 图纸摘要：这张图纸有多少豆格、用了几个色号、一共要摆多少颗、做出来多大。
  */
 
-import { beadSizeById, patternSizeMm } from '../domain/bead-size'
+import { beadSizeById, formatPatternSize, patternSizeMm } from '../domain/bead-size'
 import { totalBeads } from '../domain/grid'
 import type { Pattern } from '../domain/pattern'
 import { type SourceInfo, useConversion } from '../state/store'
@@ -23,8 +23,9 @@ function SummaryStat({ label, value }: { label: string; value: string }) {
 
 export function PatternSummary({ pattern, source }: PatternSummaryProps) {
   const beadSizeId = useConversion((state) => state.beadSizeId)
-  const sizeMm = patternSizeMm(pattern.grid.cols, pattern.grid.rows, beadSizeById(beadSizeId))
-  const sizeLabel = `${(sizeMm.widthMm / 10).toFixed(1)} × ${(sizeMm.heightMm / 10).toFixed(1)} cm`
+  const sizeLabel = formatPatternSize(
+    patternSizeMm(pattern.grid.cols, pattern.grid.rows, beadSizeById(beadSizeId)),
+  )
 
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-4">

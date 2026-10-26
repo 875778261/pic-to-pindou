@@ -8,9 +8,7 @@ import { hexToRgb } from '../domain/colour'
 import { BLANK_CELL, cellAt } from '../domain/grid'
 import type { Palette } from '../domain/palette/types'
 import { type Pattern, paletteEntryForCell } from '../domain/pattern'
-
-/** 空白格用浅灰打底，和白色豆（G 系列的白）能分开 */
-const BLANK_CELL_HEX = '#E5E7EB'
+import { BLANK_CELL_HEX } from './colours'
 
 export type PreviewViewport = { width: number; height: number; pixelRatio: number }
 

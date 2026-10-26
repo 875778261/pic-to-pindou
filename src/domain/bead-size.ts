@@ -37,3 +37,8 @@ export function patternSizeMm(cols: number, rows: number, beadSize: BeadSize): P
   }
   return { widthMm: cols * beadSize.diameterMm, heightMm: rows * beadSize.diameterMm }
 }
+
+/** 成品尺寸的成品说法：「14.5 × 11.0 厘米」。摘要、超限提示、图纸抬头共用这一句 */
+export function formatPatternSize(size: PatternSizeMm): string {
+  return `${(size.widthMm / 10).toFixed(1)} × ${(size.heightMm / 10).toFixed(1)} 厘米`
+}
