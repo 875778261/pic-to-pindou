@@ -140,6 +140,22 @@ export function panBy(view: Viewport, deltaX: number, deltaY: number): Viewport 
   return { ...view, panX: view.panX + deltaX, panY: view.panY + deltaY }
 }
 
+/** 屏幕上的两指：中点与间距。双指手势只看这两个量 */
+export type Pinch = {
+  centre: { x: number; y: number }
+  distance: number
+}
+
+/**
+ * 双指手势：间距比决定缩放、中点位移决定平移。
+ * 缩放锚在中点上，两指之间的那一点在手势前后指着同一格。
+ */
+export function pinchView(view: Viewport, from: Pinch, to: Pinch): Viewport {
+  const factor = from.distance > 0 ? to.distance / from.distance : 1
+  const zoomed = zoomAt(view, from.centre, factor)
+  return panBy(zoomed, to.centre.x - from.centre.x, to.centre.y - from.centre.y)
+}
+
 /** 回到适应窗口：缩放归位、平移清零 */
 export function fitView(view: Viewport): Viewport {
   return { ...view, zoom: MIN_ZOOM, panX: 0, panY: 0 }

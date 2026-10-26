@@ -1,31 +1,22 @@
 /**
- * 应用外壳。
+ * 应用外壳：宽屏三栏，窄屏画布满屏 + 底部抽屉。
  *
- * 这一版打通「上传 → 调参 → 预览 → 导出 PNG 图纸」。
+ * 两条路只差布局，内容组件是同一批。
  */
 
-import { type ConvertStatus, useConversion } from './state/store'
+import { useConversion } from './state/store'
 import { DropZone } from './ui/DropZone'
-import { ExportButton } from './ui/ExportButton'
-import { ParameterPanel } from './ui/ParameterPanel'
-import { PatternSummary } from './ui/PatternSummary'
+import { MobileShell } from './ui/MobileShell'
+import { ParameterPane } from './ui/ParameterPane'
 import { PreviewStage } from './ui/PreviewStage'
+import { CANVAS_PLACEHOLDER } from './ui/statusCopy'
 import { UsagePanel } from './ui/UsagePanel'
+import { useMediaQuery, WIDE_QUERY } from './ui/useMediaQuery'
 
-const PLACEHOLDER_BY_STATUS: Record<ConvertStatus, string> = {
-  idle: '还没有图片。在左边选一张，或者把图直接拖进来。',
-  loading: '正在读图…',
-  converting: '正在把图片变成豆格…',
-  ready: '预览出问题了，换一张图试试。',
-  rejected: '这张图没有转成图纸，原因见左边。',
-  failed: '这张图没有转成图纸，原因见左边。',
-}
-
-export default function App() {
+function WideShell() {
   const status = useConversion((state) => state.status)
   const pattern = useConversion((state) => state.pattern)
   const source = useConversion((state) => state.source)
-  const notice = useConversion((state) => state.notice)
   const loadFile = useConversion((state) => state.loadFile)
   const markBlank = useConversion((state) => state.markBlank)
 
@@ -46,29 +37,12 @@ export default function App() {
             }}
           />
 
-          <ParameterPanel />
-
-          {pattern ? <PatternSummary pattern={pattern} source={source} /> : null}
-
-          <ExportButton />
-
-          {notice ? (
-            <p
-              role="alert"
-              className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-sm"
-            >
-              {notice}
-            </p>
-          ) : null}
-
-          {status === 'ready' && pattern ? (
-            <p className="text-neutral-400 text-xs">屏幕颜色和实物有偏差，色号才是下单依据。</p>
-          ) : null}
+          <ParameterPane pattern={pattern} source={source} />
         </aside>
 
         <PreviewStage
           pattern={pattern}
-          placeholder={PLACEHOLDER_BY_STATUS[status]}
+          placeholder={CANVAS_PLACEHOLDER[status]}
           onPickCode={markBlank}
         />
 
@@ -76,4 +50,9 @@ export default function App() {
       </div>
     </main>
   )
+}
+
+export default function App() {
+  const wide = useMediaQuery(WIDE_QUERY)
+  return wide ? <WideShell /> : <MobileShell />
 }

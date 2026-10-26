@@ -12,8 +12,10 @@ import { createPattern, type Pattern, paletteEntryForCell } from '../domain/patt
 import {
   cellAtPoint,
   fitView,
+  type Pinch,
   type PreviewStyle,
   panBy,
+  pinchView,
   placement,
   type Viewport,
   zoomAt,
@@ -26,6 +28,8 @@ type PreviewStageProps = {
   pattern: Pattern | null
   placeholder: string
   onPickCode: (code: string) => void
+  /** 占满给定高度、不写底部操作提示：窄屏上空间要留给画布（#9） */
+  fill?: boolean
 }
 
 /** 按下到抬起移动超过这个距离就算拖动，不再当成点选 */
@@ -51,9 +55,32 @@ const EMPTY_VIEW: Viewport = {
 type Stroke = {
   paints: Map<number, number>
   last: { col: number; row: number }
+  /** 落笔前那张图纸，用来撤掉「其实是想双指」时误落的那一格 */
+  before: Pattern
+  /** 已经划过格：划过才算真的在涂，没划过就只是按了一下 */
+  moved: boolean
 }
 
-export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageProps) {
+/** 屏幕上还按着的指头，按 pointerId 记住位置。两根在一起就是双指手势 */
+type PointerSpot = { x: number; y: number }
+
+function pinchOf(pointers: Map<number, PointerSpot>): Pinch | null {
+  const [first, second] = [...pointers.values()]
+  if (!first || !second) {
+    return null
+  }
+  return {
+    centre: { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 },
+    distance: Math.hypot(second.x - first.x, second.y - first.y),
+  }
+}
+
+export function PreviewStage({
+  pattern,
+  placeholder,
+  onPickCode,
+  fill = false,
+}: PreviewStageProps) {
   const observerRef = useRef<ResizeObserver | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
@@ -64,6 +91,8 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
   const pickTimerRef = useRef<number | null>(null)
   const dragRef = useRef<{ x: number; y: number; from: Viewport; moved: boolean } | null>(null)
   const strokeRef = useRef<Stroke | null>(null)
+  const pointersRef = useRef(new Map<number, PointerSpot>())
+  const pinchRef = useRef<Pinch | null>(null)
 
   const paintMode = useConversion((state) => state.paintMode)
   const brush = useConversion((state) => state.brush)
@@ -205,19 +234,19 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
     }
   }, [])
 
+  /** 指针落在画布上的位置 */
+  const canvasPoint = (event: PointerEvent<HTMLCanvasElement>): PointerSpot => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top }
+  }
+
   /** 指针落在哪一格；落在网格外给 null */
   const cellUnderPointer = (event: PointerEvent<HTMLCanvasElement>) => {
     if (!pattern) {
       return null
     }
-    const rect = event.currentTarget.getBoundingClientRect()
-    return cellAtPoint(
-      placement(view),
-      event.clientX - rect.left,
-      event.clientY - rect.top,
-      pattern.grid.cols,
-      pattern.grid.rows,
-    )
+    const point = canvasPoint(event)
+    return cellAtPoint(placement(view), point.x, point.y, pattern.grid.cols, pattern.grid.rows)
   }
 
   /** 手里这支笔画下去是哪个格值：编码 0 是橡皮，色号取色卡下标加一 */
@@ -262,13 +291,38 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
 
   const handlePointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId)
+    pointersRef.current.set(event.pointerId, canvasPoint(event))
+
+    // 第二根指头落下即转入双指。第一根指头那一下算不算涂：划过格才算，
+    // 只按了一下就是本想双指缩放，那一格当场撤掉、不进撤销栈
+    if (pointersRef.current.size === 2) {
+      const stroke = strokeRef.current
+      strokeRef.current = null
+      if (stroke?.moved) {
+        commitPaint()
+      } else if (stroke) {
+        paintDraft(stroke.before)
+      }
+      dragRef.current = null
+      pinchRef.current = pinchOf(pointersRef.current)
+      return
+    }
+    if (pointersRef.current.size > 2) {
+      return
+    }
 
     if (editing && paintable && !spaceHeld && event.button === 0) {
       const hit = paintHit(event)
-      if (!hit) {
+      const before = useConversion.getState().pattern
+      if (!hit || !before) {
         return
       }
-      strokeRef.current = { paints: new Map([[hit.index, hit.value]]), last: hit.point }
+      strokeRef.current = {
+        paints: new Map([[hit.index, hit.value]]),
+        last: hit.point,
+        before,
+        moved: false,
+      }
       flushStroke()
       return
     }
@@ -277,6 +331,24 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
   }
 
   const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (pointersRef.current.has(event.pointerId)) {
+      pointersRef.current.set(event.pointerId, canvasPoint(event))
+    }
+
+    const pinch = pinchRef.current
+    if (pinch && pointersRef.current.size >= 2) {
+      const next = pinchOf(pointersRef.current)
+      if (next) {
+        setView((current) => pinchView(current, pinch, next))
+        pinchRef.current = next
+      }
+      return
+    }
+    // 双指还没全抬起来时，剩下的指头不接着涂也不接着挪
+    if (pinchRef.current) {
+      return
+    }
+
     const stroke = strokeRef.current
     if (stroke) {
       const hit = paintHit(event)
@@ -291,6 +363,7 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
         stroke.paints.set(index, hit.value)
       }
       stroke.last = hit.point
+      stroke.moved = true
       flushStroke()
       return
     }
@@ -308,7 +381,23 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
     setView(panBy(drag.from, deltaX, deltaY))
   }
 
+  /** 放开一根指头；还有指头按着时返回 true */
+  const releasePointer = (pointerId: number) => {
+    pointersRef.current.delete(pointerId)
+    if (pointersRef.current.size === 0) {
+      pinchRef.current = null
+      return false
+    }
+    return true
+  }
+
   const handlePointerUp = (event: PointerEvent<HTMLCanvasElement>) => {
+    const stillHeld = releasePointer(event.pointerId)
+    // 双指里先抬起一根：剩下那根不接管成单指动作，等它一起抬
+    if (stillHeld && pinchRef.current) {
+      return
+    }
+
     if (strokeRef.current) {
       strokeRef.current = null
       // 一次按下到抬起只记一步
@@ -351,7 +440,11 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
   const cursor = editing ? (spaceHeld ? 'cursor-grab' : 'cursor-crosshair') : 'cursor-grab'
 
   return (
-    <div className="flex min-h-[420px] flex-col gap-2 overflow-hidden rounded-xl border border-neutral-200 bg-white p-4">
+    <div
+      className={`flex flex-col gap-2 overflow-hidden rounded-xl border border-neutral-200 bg-white p-4 ${
+        fill ? 'min-h-0' : 'min-h-[420px]'
+      }`}
+    >
       {pattern ? (
         <>
           <div ref={attachSurface} className="relative min-h-0 flex-1">
@@ -366,7 +459,8 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
-              onPointerCancel={() => {
+              onPointerCancel={(event) => {
+                releasePointer(event.pointerId)
                 dragRef.current = null
                 // 已经落到图纸上的那一笔照样算一步，不留在半空
                 if (strokeRef.current) {
@@ -448,12 +542,14 @@ export function PreviewStage({ pattern, placeholder, onPickCode }: PreviewStageP
               </div>
             ) : null}
           </div>
-          {editing ? <PaintBar pattern={pattern} /> : null}
-          <p className="text-neutral-500 text-xs">
-            {editing
-              ? '拖动涂色、按住空格拖动平移；一笔算一步，撤销在画笔条右侧。手改不保存，刷新就没了。'
-              : '滚轮缩放、拖动平移、双击回到适应窗口；点一颗豆把它标成不摆豆。'}
-          </p>{' '}
+          {editing && !fill ? <PaintBar pattern={pattern} /> : null}
+          {fill ? null : (
+            <p className="text-neutral-500 text-xs">
+              {editing
+                ? '拖动涂色、按住空格拖动平移；一笔算一步，撤销在画笔条右侧。手改不保存，刷新就没了。'
+                : '滚轮缩放、拖动平移、双击回到适应窗口；点一颗豆把它标成不摆豆。'}
+            </p>
+          )}{' '}
         </>
       ) : (
         <p className="flex flex-1 items-center justify-center text-center text-neutral-400 text-sm">

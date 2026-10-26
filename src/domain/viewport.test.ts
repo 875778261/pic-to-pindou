@@ -6,6 +6,7 @@ import {
   fitCellSize,
   MAX_ZOOM,
   panBy,
+  pinchView,
   placement,
   usesBeads,
   type Viewport,
@@ -106,5 +107,71 @@ describe('预览视口', () => {
     expect(() => fitCellSize(0, 29, 580, 580)).toThrow()
     expect(() => fitCellSize(29, 29, 0, 580)).toThrow()
     expect(() => placement(viewOf({ zoom: 0 }))).toThrow()
+  })
+})
+
+describe('双指手势', () => {
+  it('两指拉开一倍，缩放也翻一倍', () => {
+    const view = viewOf({ zoom: 2 })
+    const next = pinchView(
+      view,
+      { centre: { x: 290, y: 290 }, distance: 100 },
+      { centre: { x: 290, y: 290 }, distance: 200 },
+    )
+    expect(next.zoom).toBeCloseTo(4)
+  })
+
+  it('两指捏拢就缩小', () => {
+    const view = viewOf({ zoom: 4 })
+    const next = pinchView(
+      view,
+      { centre: { x: 290, y: 290 }, distance: 200 },
+      { centre: { x: 290, y: 290 }, distance: 100 },
+    )
+    expect(next.zoom).toBeCloseTo(2)
+  })
+
+  it('中点不动时，中点底下还是同一格', () => {
+    const view = viewOf({ zoom: 2 })
+    const centre = { x: 290, y: 290 }
+    const before = placement(view)
+    const next = pinchView(view, { centre, distance: 100 }, { centre, distance: 240 })
+    const after = placement(next)
+
+    const gridX = (centre.x - before.originX) / before.cellSize
+    const gridY = (centre.y - before.originY) / before.cellSize
+    expect((centre.x - after.originX) / after.cellSize).toBeCloseTo(gridX)
+    expect((centre.y - after.originY) / after.cellSize).toBeCloseTo(gridY)
+  })
+
+  it('两指一起往右挪，画面跟着往右挪', () => {
+    const view = viewOf({ zoom: 3 })
+    const next = pinchView(
+      view,
+      { centre: { x: 200, y: 280 }, distance: 150 },
+      { centre: { x: 320, y: 280 }, distance: 150 },
+    )
+    expect(next.zoom).toBeCloseTo(3)
+    expect(placement(next).originX).toBeGreaterThan(placement(view).originX)
+  })
+
+  it('放大到上限就停住，不会越界', () => {
+    const view = viewOf({ zoom: MAX_ZOOM - 1 })
+    const next = pinchView(
+      view,
+      { centre: { x: 290, y: 290 }, distance: 100 },
+      { centre: { x: 290, y: 290 }, distance: 900 },
+    )
+    expect(next.zoom).toBeCloseTo(MAX_ZOOM)
+  })
+
+  it('两指重合时不报错，缩放原样不动', () => {
+    const view = viewOf({ zoom: 2 })
+    const next = pinchView(
+      view,
+      { centre: { x: 100, y: 100 }, distance: 0 },
+      { centre: { x: 100, y: 100 }, distance: 50 },
+    )
+    expect(next.zoom).toBeCloseTo(2)
   })
 })

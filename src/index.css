@@ -5,3 +5,9 @@ body,
 #root {
   height: 100%;
 }
+
+/* 贴着屏幕上缘或下缘拖动时不动页面：画布与抽屉各自处理自己的手势 */
+html,
+body {
+  overscroll-behavior: none;
+}
