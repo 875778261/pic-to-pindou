@@ -8,10 +8,10 @@ import { type BeadGrid, BLANK_CELL, countBeads } from './grid'
 import type { BeadCode, Palette, PaletteEntry } from './palette/types'
 
 /**
- * 单边到这个格数为止，格子里还塞得下色号。
- * 再大就只能靠行列坐标配图例认格。
+ * 格内塞得下色号的最小格宽。
+ * 再窄字号就掉到 6px 以下，印在纸上认不出（ADR-0015）。
  */
-export const LABELLED_CELL_LIMIT = 40
+export const MIN_CODE_CELL_SIZE = 14
 
 export type Pattern = {
   /** 这张图纸用的是哪个色卡档位 */
@@ -77,7 +77,10 @@ export function legendEntries(pattern: Pattern, palette: Palette): LegendEntry[]
     .map(({ index: _index, ...entry }) => entry)
 }
 
-/** 格内要不要标色号。取长短边的长者：任一维过密，格子就都塞不下了 */
-export function labelsCellCodes(cols: number, rows: number): boolean {
-  return Math.max(cols, rows) <= LABELLED_CELL_LIMIT
+/**
+ * 这个格宽塞不塞得下色号。
+ * 只存在这一处：排版、绘制、界面提示都问它，不再各拿格数猜一遍（ADR-0015）。
+ */
+export function cellFitsCode(cellSize: number): boolean {
+  return cellSize >= MIN_CODE_CELL_SIZE
 }

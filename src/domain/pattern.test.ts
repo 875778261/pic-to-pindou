@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { createBlankGrid, setCell, totalBeads } from './grid'
 import { MARD_221, MARD_291 } from './palette/mard'
 import {
+  cellFitsCode,
   createPattern,
-  LABELLED_CELL_LIMIT,
-  labelsCellCodes,
   legendEntries,
+  MIN_CODE_CELL_SIZE,
   patternBelongsTo,
 } from './pattern'
 
@@ -131,22 +131,17 @@ describe('图例', () => {
   })
 })
 
-describe('格内色号标注', () => {
-  it('单边到上限为止都要标', () => {
-    expect(LABELLED_CELL_LIMIT).toBe(40)
-    expect(labelsCellCodes(1, 1)).toBe(true)
-    expect(labelsCellCodes(29, 29)).toBe(true)
-    expect(labelsCellCodes(40, 1)).toBe(true)
-    expect(labelsCellCodes(40, 40)).toBe(true)
+describe('格内色号的可读宽度', () => {
+  it('格宽到可读下限才标，差一像素就不标', () => {
+    expect(MIN_CODE_CELL_SIZE).toBe(14)
+    expect(cellFitsCode(13)).toBe(false)
+    expect(cellFitsCode(14)).toBe(true)
+    expect(cellFitsCode(24)).toBe(true)
   })
 
-  it('长短边取长者，任一维过密就不标', () => {
-    expect(labelsCellCodes(41, 41)).toBe(false)
-    expect(labelsCellCodes(40, 41)).toBe(false)
-    expect(labelsCellCodes(41, 1)).toBe(false)
-    // 2 块板（29 × 58）第二维已过 40，所以只有 1 块板的方形网格标格内色号
-    expect(labelsCellCodes(29, 58)).toBe(false)
-    expect(labelsCellCodes(58, 58)).toBe(false)
-    expect(labelsCellCodes(200, 200)).toBe(false)
+  it('判定只看格宽，与格数无关', () => {
+    // 200 × 200 只要格子还够宽就照样标，格数不该进这条判定
+    expect(cellFitsCode(200)).toBe(true)
+    expect(cellFitsCode(4)).toBe(false)
   })
 })

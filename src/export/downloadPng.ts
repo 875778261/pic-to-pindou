@@ -10,6 +10,8 @@ export type ExportResult = {
   fileName: string
   width: number
   height: number
+  /** 这张图纸有没有在格内标色号，用来如实回报给用户 */
+  labelled: boolean
 }
 
 /** 文件名里去掉路径分隔符与系统不收的字符，其余照原样保留（中文名照样能用） */
@@ -47,11 +49,16 @@ export async function exportPatternSheet(
   input: PatternSheetInput,
   fileNameBase: string,
 ): Promise<ExportResult> {
-  const canvas = drawPatternSheet(input)
-  const blob = await canvasToBlob(canvas)
+  const sheet = drawPatternSheet(input)
+  const blob = await canvasToBlob(sheet.canvas)
   const { cols, rows } = input.pattern.grid
   // 同一张网格在三种豆规格下是三个不同成品，规格要进文件名
   const fileName = `${sanitiseFileNameBase(fileNameBase)}-${cols}x${rows}-${input.beadSize.diameterMm}mm.png`
   triggerDownload(blob, fileName)
-  return { fileName, width: canvas.width, height: canvas.height }
+  return {
+    fileName,
+    width: sheet.canvas.width,
+    height: sheet.canvas.height,
+    labelled: sheet.labelled,
+  }
 }

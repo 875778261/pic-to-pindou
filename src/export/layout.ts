@@ -5,18 +5,31 @@
  * 图例排在哪儿。画的部分见 drawPattern.ts，这样排版规则能被单独测到（spec「不测 Canvas 像素」）。
  */
 
-import { LABELLED_CELL_LIMIT, labelsCellCodes } from '../domain/pattern'
+import { MIN_CODE_CELL_SIZE } from '../domain/pattern'
 
-export const EXPORT_LIMITS = {
+export type ExportLimits = {
   /** 一格画多大。格子够大，色号才塞得进格内 */
-  preferredCellSize: 24,
+  preferredCellSize: number
   /** 缩到再小就认不出格了，宁可到此为止 */
-  minCellSize: 4,
+  minCellSize: number
   /** 画布单边上限：超过这个尺寸的图在手机上打不开 */
-  maxCanvasSide: 8192,
+  maxCanvasSide: number
   /** 画布总面积上限。iOS Safari 的画布上限约 1670 万像素，超过就编码不出图 */
+  maxCanvasArea: number
+}
+
+export const EXPORT_LIMITS: ExportLimits = {
+  preferredCellSize: 24,
+  minCellSize: 4,
+  maxCanvasSide: 8192,
   maxCanvasArea: 16_777_216,
-} as const
+}
+
+/**
+ * 坐标「每格都标」的格数上限。
+ * 与「标不标色号」无关：格内有色号时坐标仍然要变稀，两条判定各管各的。
+ */
+export const COORDINATE_DENSE_LIMIT = 40
 
 const MARGIN = 32
 /** 网格左侧留给行号 */
@@ -49,7 +62,7 @@ export type Rect = { x: number; y: number; width: number; height: number }
 
 export type ExportLayout = {
   cellSize: number
-  /** 格内标不标色号 */
+  /** 格内标不标色号。排版的结果而非输入：格宽是这里算出来的（ADR-0015） */
   labelled: boolean
   /** 行列号每隔几格标一次 */
   coordinateStep: { cols: number; rows: number }
@@ -74,7 +87,7 @@ export type ExportLayoutInput = {
 
 /** 坐标数字的密度：格数一多，每格都标就是一堵灰墙 */
 function coordinateStepFor(length: number): number {
-  if (length <= LABELLED_CELL_LIMIT) {
+  if (length <= COORDINATE_DENSE_LIMIT) {
     return 1
   }
   return length <= 100 ? 5 : 10
@@ -118,18 +131,18 @@ export function legendSlot(index: number, columns: number): { column: number; ro
   return { column: index % columns, row: Math.floor(index / columns) }
 }
 
-function clampCellSize(value: number): number {
-  const { preferredCellSize, minCellSize } = EXPORT_LIMITS
-  return Math.max(minCellSize, Math.min(preferredCellSize, value))
+function clampCellSize(value: number, limits: ExportLimits): number {
+  return Math.max(limits.minCellSize, Math.min(limits.preferredCellSize, value))
 }
 
-export function planExportLayout(input: ExportLayoutInput): ExportLayout {
+export function planExportLayout(
+  input: ExportLayoutInput,
+  limits: ExportLimits = EXPORT_LIMITS,
+): ExportLayout {
   const { cols, rows, legendEntryCount, titleWidth = 0, legendItemWidth = 0 } = input
   if (cols <= 0 || rows <= 0) {
     throw new Error(`网格尺寸必须是正整数：${cols} × ${rows}`)
   }
-
-  const { maxCanvasSide, maxCanvasArea } = EXPORT_LIMITS
 
   /** 某个格宽下的纸面尺寸。格宽与图例尺寸互相依赖，一次算全 */
   const paperAt = (cellSize: number) => {
@@ -159,17 +172,40 @@ export function planExportLayout(input: ExportLayoutInput): ExportLayout {
     }
   }
 
-  // 首选格宽放不下就一路往下缩：单边与面积两条上限，任一顶到都要让路
-  const fitsCaps = (cellSize: number) => {
+  // 单边与面积两条上限，任一顶到都要让路
+  const fitsCaps = (cellSize: number): boolean => {
     const { width, height } = paperAt(cellSize)
-    return width <= maxCanvasSide && height <= maxCanvasSide && width * height <= maxCanvasArea
+    return (
+      width <= limits.maxCanvasSide &&
+      height <= limits.maxCanvasSide &&
+      width * height <= limits.maxCanvasArea
+    )
   }
 
-  let cellSize: number = EXPORT_LIMITS.preferredCellSize
-  while (cellSize > EXPORT_LIMITS.minCellSize && !fitsCaps(cellSize)) {
-    cellSize -= 1
+  /**
+   * 带格内色号时能用的最大格宽：从首选往下走，走到色号还认得出的下限为止。
+   * 一档都装不进给 null，交给不标注那条路（ADR-0015）。
+   */
+  const labelledCellSize = (): number | null => {
+    for (let cellSize = limits.preferredCellSize; cellSize >= MIN_CODE_CELL_SIZE; cellSize -= 1) {
+      if (fitsCaps(cellSize)) {
+        return cellSize
+      }
+    }
+    return null
   }
-  cellSize = clampCellSize(cellSize)
+
+  /** 不标色号时只求装得下：沿用一路缩到底的做法 */
+  const plainCellSize = (): number => {
+    let cellSize = limits.preferredCellSize
+    while (cellSize > limits.minCellSize && !fitsCaps(cellSize)) {
+      cellSize -= 1
+    }
+    return clampCellSize(cellSize, limits)
+  }
+
+  const labelledSize = labelledCellSize()
+  const cellSize = labelledSize ?? plainCellSize()
 
   const paper = paperAt(cellSize)
   const grid: Rect = {
@@ -181,7 +217,7 @@ export function planExportLayout(input: ExportLayoutInput): ExportLayout {
 
   return {
     cellSize,
-    labelled: labelsCellCodes(cols, rows),
+    labelled: labelledSize !== null,
     coordinateStep: { cols: coordinateStepFor(cols), rows: coordinateStepFor(rows) },
     grid,
     legend: {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { labelsCellCodes } from '../domain/pattern'
+import { MIN_CODE_CELL_SIZE } from '../domain/pattern'
 import { coordinateIndexes, EXPORT_LIMITS, legendSlot, planExportLayout } from './layout'
 
 describe('导出排版', () => {
@@ -19,15 +19,42 @@ describe('导出排版', () => {
     expect(layout.canvas.width - (layout.grid.x + layout.grid.width)).toBeGreaterThan(0)
   })
 
-  it('是否标注格内色号与 domain 的判定一致，40 前后翻转', () => {
-    expect(planExportLayout({ cols: 40, rows: 40, legendEntryCount: 0 }).labelled).toBe(
-      labelsCellCodes(40, 40),
-    )
-    expect(planExportLayout({ cols: 41, rows: 41, legendEntryCount: 0 }).labelled).toBe(
-      labelsCellCodes(41, 41),
-    )
+  it('格子塞得下色号就标，41 格起也照标', () => {
     expect(planExportLayout({ cols: 40, rows: 40, legendEntryCount: 0 }).labelled).toBe(true)
-    expect(planExportLayout({ cols: 41, rows: 41, legendEntryCount: 0 }).labelled).toBe(false)
+    expect(planExportLayout({ cols: 41, rows: 41, legendEntryCount: 0 }).labelled).toBe(true)
+  })
+
+  it('最常用的 2 块板 29 × 58 必须标色号', () => {
+    expect(planExportLayout({ cols: 29, rows: 58, legendEntryCount: 12 }).labelled).toBe(true)
+  })
+
+  it('大网格缩格宽也要标，且不低于可读下限', () => {
+    for (const side of [58, 87, 200]) {
+      const layout = planExportLayout({ cols: side, rows: side, legendEntryCount: 40 })
+      expect(layout.labelled).toBe(true)
+      expect(layout.cellSize).toBeGreaterThanOrEqual(MIN_CODE_CELL_SIZE)
+      expect(layout.canvas.width * layout.canvas.height).toBeLessThanOrEqual(
+        EXPORT_LIMITS.maxCanvasArea,
+      )
+    }
+  })
+
+  it('连可读下限都破上限时才不标，格宽继续缩到装得下', () => {
+    // 面积上限压到 1000 万：14px 格宽要 1180 万，不标色号缩到 12px 才过
+    const tight = { ...EXPORT_LIMITS, maxCanvasArea: 10_000_000 }
+    const layout = planExportLayout({ cols: 200, rows: 200, legendEntryCount: 40 }, tight)
+
+    expect(layout.labelled).toBe(false)
+    expect(layout.cellSize).toBeGreaterThanOrEqual(EXPORT_LIMITS.minCellSize)
+    expect(layout.cellSize).toBeLessThan(MIN_CODE_CELL_SIZE)
+    expect(layout.canvas.width * layout.canvas.height).toBeLessThanOrEqual(tight.maxCanvasArea)
+  })
+
+  it('坐标密度不跟着色号判定走：41 格标色号，坐标照样变稀', () => {
+    const layout = planExportLayout({ cols: 41, rows: 41, legendEntryCount: 0 })
+
+    expect(layout.labelled).toBe(true)
+    expect(layout.coordinateStep).toEqual({ cols: 5, rows: 5 })
   })
 
   it('格数多时坐标隔几格标一次，免得糊成一团', () => {

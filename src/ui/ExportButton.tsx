@@ -7,7 +7,6 @@
 import { useState } from 'react'
 import { beadSizeById } from '../domain/bead-size'
 import { paletteById } from '../domain/palette/registry'
-import { LABELLED_CELL_LIMIT, labelsCellCodes } from '../domain/pattern'
 import { exportPatternSheet } from '../export/downloadPng'
 import { useConversion } from '../state/store'
 
@@ -19,8 +18,6 @@ export function ExportButton() {
   const beadSizeId = useConversion((state) => state.beadSizeId)
   const [phase, setPhase] = useState<ExportPhase>('idle')
   const [message, setMessage] = useState<string | null>(null)
-
-  const labelled = pattern ? labelsCellCodes(pattern.grid.cols, pattern.grid.rows) : false
 
   const handleClick = async () => {
     if (!pattern || phase === 'working') {
@@ -34,7 +31,8 @@ export function ExportButton() {
         source?.fileName ?? '拼豆图纸',
       )
       setPhase('done')
-      setMessage(`已生成 ${result.fileName}（${result.width} × ${result.height} 像素）`)
+      const solved = result.labelled ? '格内已标色号' : '图纸过大，格内未标色号，按行列坐标配图例摆'
+      setMessage(`已生成 ${result.fileName}（${result.width} × ${result.height} 像素），${solved}`)
     } catch (error) {
       setPhase('failed')
       setMessage(error instanceof Error ? error.message : '导出失败，请再试一次')
@@ -56,9 +54,7 @@ export function ExportButton() {
 
       <p className="mt-2 text-neutral-500 text-xs">
         {pattern
-          ? labelled
-            ? '图纸含网格、行列坐标、图例、成品尺寸与总颗数，格内直接标色号。'
-            : `网格单边超过 ${LABELLED_CELL_LIMIT} 格，格内不标色号，按行列坐标配图例摆。`
+          ? '图纸含网格、行列坐标、图例、成品尺寸与总颗数；格子够大时格内直接标色号。'
           : '先上传一张图，才有图纸可导。'}
       </p>
 

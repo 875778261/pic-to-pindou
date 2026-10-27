@@ -236,8 +236,11 @@ function drawLegend(
   })
 }
 
-/** 合成一张图纸，返回离屏画布；要不要下载由调用方决定 */
-export function drawPatternSheet(input: PatternSheetInput): HTMLCanvasElement {
+/** 合成一张图纸；要不要下载由调用方决定，标没标色号一并交出去 */
+export function drawPatternSheet(input: PatternSheetInput): {
+  canvas: HTMLCanvasElement
+  labelled: boolean
+} {
   const { pattern, palette, beadSize } = input
   const { cols, rows } = pattern.grid
   const entries = legendEntries(pattern, palette)
@@ -269,5 +272,5 @@ export function drawPatternSheet(input: PatternSheetInput): HTMLCanvasElement {
   drawCoordinates(context, layout, cols, rows)
   drawLegend(context, layout, entries)
 
-  return canvas
+  return { canvas, labelled: layout.labelled }
 }
