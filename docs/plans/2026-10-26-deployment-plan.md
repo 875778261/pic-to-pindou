@@ -182,6 +182,55 @@ Cloudflare 已把 Workers Static Assets 作为 2026 年新项目的推荐路径�
 **何时选它：** 未来若要加后端（D1 数据库、R2 存图、Workers AI），静态资源和 API 放一份部署里更省事。
 **何时别选它：** 只是想上线一个纯静态站时，方案 A 少写两个文件、多白拿 PR 预览。
 
+### B1. 部署后如何访问
+
+**① 默认地址（无需域名，部署完就有）**
+
+Workers 项目的默认域名格式是 `https://<服务名>.<账户子域>.workers.dev`。位置：
+
+> Cloudflare Dashboard → Workers & Pages → `pic-to-pindou` → 概览页顶部 / **Settings → Domains & Routes**
+
+该页会有两条记录：一条 `pic-to-pindou.<子域>.workers.dev`（Workers.dev 子域），一条 `*.workers.dev` 的通配规则。
+若只有通配、没有具体那条，说明 **Workers.dev 子域未启用**：同页点 `Enable` / `Add` → 选 `Workers.dev` → 保存，几秒后生效。
+账户子域是账号级设置，可在该页或 **Workers & Pages → 账户设置** 里查看/修改，格式形如 `lhl.workers.dev`。
+
+**② 绑自有域名（推荐，比 workers.dev 在国内稳得多）**
+
+前提：域名**托管在同一个 Cloudflare 账户**（NS 指向 Cloudflare）。
+
+> Workers & Pages → `pic-to-pindou` → **Settings → Domains & Routes → Add → Custom domain** → 填 `pindou.example.com`（子域或根域都行）→ Add domain
+
+Cloudflare 会自动建 DNS 记录、自动签发证书，通常 1–2 分钟生效。**不要手工加 CNAME**，`Custom domain` 走的是 Worker 专属证书链路，手工 CNAME 会证书不匹配。
+
+域名不在 Cloudflare 上：两条路 —— ① 把 NS 改到 Cloudflare（免费，最省事，改完再按上面加 Custom domain）；② 保持 DNS 在别处、只加一条 CNAME 指向 `pic-to-pindou.<子域>.workers.dev`：能通，但访问的是 worker 的证书，浏览器会报域名不匹配，**不推荐**。
+
+**③ 用配置声明路由（想让域名进代码库时）**
+
+`wrangler.jsonc` 里加：
+
+```jsonc
+"routes": [
+  { "pattern": "pindou.example.com", "custom_domain": true }
+]
+```
+
+之后 `npm run deploy` 会顺带把域名绑上，不用每次点面板。注意域名必须已在该账户内，否则部署会报错。
+
+**④ 国内访问的现实**
+
+`*.workers.dev` 在国内经常被 DNS 污染，直连不稳。自有域名 + Cloudflare 代理会好一些，但仍然绕境外网络，延迟高、偶发丢包。
+纯静态站若面向国内用户且要稳定，正解是国内 OSS/COS + CDN（需备案），Cloudflare 只作为海外镜像。这一点在选平台时就该纳入判断。
+
+**⑤ 上线后自检**
+
+```bash
+curl -sI https://<域名> | head -5          # 期望 HTTP/2 200，含 cf-ray
+curl -sI https://<域名>/assets/<主 js> | grep -i cache-control   # 期望 immutable
+```
+
+浏览器里再过一遍：控制台无报错、`convert.worker-*.js` 加载成功（Network 里能看到）、拖图转换正常、导出 PNG 能下载。
+
+
 ---
 
 ## 五、方案 C（备选）：GitHub Pages
