@@ -31,8 +31,12 @@ export function ExportButton() {
         source?.fileName ?? '拼豆图纸',
       )
       setPhase('done')
-      const solved = result.labelled ? '格内已标色号' : '图纸过大，格内未标色号，按行列坐标配图例摆'
-      setMessage(`已生成 ${result.fileName}（${result.width} × ${result.height} 像素），${solved}`)
+      const labelNote = result.labelled
+        ? '格内已标色号'
+        : '图纸过大，格内未标色号，按行列坐标配图例摆'
+      setMessage(
+        `已生成 ${result.fileName}（${result.width} × ${result.height} 像素），${labelNote}`,
+      )
     } catch (error) {
       setPhase('failed')
       setMessage(error instanceof Error ? error.message : '导出失败，请再试一次')

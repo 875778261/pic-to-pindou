@@ -138,10 +138,4 @@ describe('格内色号的可读宽度', () => {
     expect(cellFitsCode(14)).toBe(true)
     expect(cellFitsCode(24)).toBe(true)
   })
-
-  it('判定只看格宽，与格数无关', () => {
-    // 200 × 200 只要格子还够宽就照样标，格数不该进这条判定
-    expect(cellFitsCode(200)).toBe(true)
-    expect(cellFitsCode(4)).toBe(false)
-  })
 })

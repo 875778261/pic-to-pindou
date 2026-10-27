@@ -78,8 +78,8 @@ export function legendEntries(pattern: Pattern, palette: Palette): LegendEntry[]
 }
 
 /**
- * 这个格宽塞不塞得下色号。
- * 只存在这一处：排版、绘制、界面提示都问它，不再各拿格数猜一遍（ADR-0015）。
+ * 格宽塞不塞得下色号。
+ * 阈值只写在这里：排版问它，其余地方读排版给出的结果。
  */
 export function cellFitsCode(cellSize: number): boolean {
   return cellSize >= MIN_CODE_CELL_SIZE

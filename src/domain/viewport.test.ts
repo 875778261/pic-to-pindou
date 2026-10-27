@@ -55,11 +55,15 @@ describe('预览视口', () => {
   })
 
   it('纵向跨过装得下的临界点时原点不跳', () => {
-    const atFit = placement(viewOf())
-    const justOver = placement(viewOf({ zoom: 1.001 }))
+    // 29 × 12 放进 900 × 700：格宽由宽度定死，纵向在 1.88 倍左右刚好铺满
+    const base = { cols: 29, rows: 12, width: 900, height: 700 }
+    const justUnder = placement(viewOf({ ...base, zoom: 1.87 }))
+    const justOver = placement(viewOf({ ...base, zoom: 1.89 }))
 
-    expect(atFit.originY).toBeCloseTo(0)
-    expect(Math.abs(justOver.originY - atFit.originY)).toBeLessThan(1)
+    expect(justUnder.cellSize * 12).toBeLessThan(700)
+    expect(justOver.cellSize * 12).toBeGreaterThan(700)
+    expect(justUnder.originY).toBeCloseTo(0)
+    expect(justOver.originY).toBeCloseTo(0)
   })
 
   it('放大后可以把网格拖出视口一部分，但拖不出空白', () => {

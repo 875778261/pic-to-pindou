@@ -51,10 +51,14 @@ describe('导出排版', () => {
   })
 
   it('坐标密度不跟着色号判定走：41 格标色号，坐标照样变稀', () => {
-    const layout = planExportLayout({ cols: 41, rows: 41, legendEntryCount: 0 })
+    const dense = planExportLayout({ cols: 40, rows: 40, legendEntryCount: 0 })
+    const sparse = planExportLayout({ cols: 41, rows: 41, legendEntryCount: 0 })
+    const sparser = planExportLayout({ cols: 200, rows: 200, legendEntryCount: 0 })
 
-    expect(layout.labelled).toBe(true)
-    expect(layout.coordinateStep).toEqual({ cols: 5, rows: 5 })
+    expect(sparse.labelled).toBe(true)
+    expect(dense.coordinateStep).toEqual({ cols: 1, rows: 1 })
+    expect(sparse.coordinateStep).toEqual({ cols: 5, rows: 5 })
+    expect(sparser.coordinateStep).toEqual({ cols: 10, rows: 10 })
   })
 
   it('格数多时坐标隔几格标一次，免得糊成一团', () => {

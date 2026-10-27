@@ -5,7 +5,7 @@
  * 图例排在哪儿。画的部分见 drawPattern.ts，这样排版规则能被单独测到（spec「不测 Canvas 像素」）。
  */
 
-import { MIN_CODE_CELL_SIZE } from '../domain/pattern'
+import { cellFitsCode } from '../domain/pattern'
 
 export type ExportLimits = {
   /** 一格画多大。格子够大，色号才塞得进格内 */
@@ -183,11 +183,14 @@ export function planExportLayout(
   }
 
   /**
-   * 带格内色号时能用的最大格宽：从首选往下走，走到色号还认得出的下限为止。
-   * 一档都装不进给 null，交给不标注那条路（ADR-0015）。
+   * 从首选格宽往下试，取第一个装得进上限的；`allowed` 说不行的档宽就不再往下试。
+   * 一路试到最小格宽都装不进给 null。
    */
-  const labelledCellSize = (): number | null => {
-    for (let cellSize = limits.preferredCellSize; cellSize >= MIN_CODE_CELL_SIZE; cellSize -= 1) {
+  const fitCellSize = (allowed: (cellSize: number) => boolean): number | null => {
+    for (let cellSize = limits.preferredCellSize; cellSize >= limits.minCellSize; cellSize -= 1) {
+      if (!allowed(cellSize)) {
+        return null
+      }
       if (fitsCaps(cellSize)) {
         return cellSize
       }
@@ -195,17 +198,10 @@ export function planExportLayout(
     return null
   }
 
-  /** 不标色号时只求装得下：沿用一路缩到底的做法 */
-  const plainCellSize = (): number => {
-    let cellSize = limits.preferredCellSize
-    while (cellSize > limits.minCellSize && !fitsCaps(cellSize)) {
-      cellSize -= 1
-    }
-    return clampCellSize(cellSize, limits)
-  }
-
-  const labelledSize = labelledCellSize()
-  const cellSize = labelledSize ?? plainCellSize()
+  // 带格内色号的那条路走到可读下限为止；走不通才退回不标注，继续缩到装得下
+  const labelledSize = fitCellSize(cellFitsCode)
+  const cellSize =
+    labelledSize ?? clampCellSize(fitCellSize(() => true) ?? limits.minCellSize, limits)
 
   const paper = paperAt(cellSize)
   const grid: Rect = {

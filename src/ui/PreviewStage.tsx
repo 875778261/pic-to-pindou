@@ -465,9 +465,9 @@ export function PreviewStage({
     >
       {pattern ? (
         <>
-          {/* 顶部留出工具条那条：图案贴顶后浮层会压住它，留白归布局，几何层不掺（ADR-0016） */}
-          <div className="relative flex min-h-0 flex-1 flex-col pt-11">
-            <div className="absolute top-2 right-2 flex items-center gap-2">
+          {/* 工具条单独占一行：图案贴顶后浮层会压住它，而留白的高度跟着这一行走（ADR-0016） */}
+          <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr]">
+            <div className="flex h-9 items-center justify-end gap-2">
               {pickedCode ? (
                 <span className="rounded-md bg-neutral-900/75 px-2 py-1 text-[10px] text-white">
                   这一格 {pickedCode}，已标成不摆豆
@@ -517,7 +517,7 @@ export function PreviewStage({
               </button>
             </div>
 
-            <div ref={attachSurface} className="relative min-h-0 flex-1">
+            <div ref={attachSurface} className="relative min-h-0">
               <canvas
                 ref={attachCanvas}
                 aria-label={

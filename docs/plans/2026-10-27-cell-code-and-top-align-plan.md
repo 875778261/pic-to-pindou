@@ -108,3 +108,13 @@
 ## 顺序
 
 A 与 B 无依赖，可各自独立提交。建议先 A（用户诉求的原点），再 B。
+
+---
+
+## 实施偏差（做完记）
+
+1. **`export/drawPattern.ts` 不是「不改」**。计划里写它能原样读 `layout.labelled`，但要让导出结果如实回报标没标色号，它就得把 `labelled` 交出去，返回类型因此从 `HTMLCanvasElement` 变成 `{ canvas, labelled }`。调用方只有 `downloadPng.ts` 一处，跟着改。
+2. **坐标分档多了一个常量**：`COORDINATE_DENSE_LIMIT = 40` 落在 `export/layout.ts`（原来借用的 `LABELLED_CELL_LIMIT` 已删）。
+3. **`planExportLayout` 的第二参数**是 `ExportLimits`（`EXPORT_LIMITS` 由 `as const` 改为显式类型），测试靠它注入更紧的上限来覆盖「破上限就不标」那条分支。
+4. **预览侧没有用固定上边距**（计划里原写「承载区顶部让出工具条高度」）：改成工具条单独占一行、画布量剩下的空间，避让高度跟着工具条自己走，几何层仍是原点 0。
+
