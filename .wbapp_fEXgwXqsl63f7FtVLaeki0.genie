@@ -1,0 +1,5 @@
+appId: wbapp_fEXgwXqsl63f7FtVLaeki0
+name: 图片转拼豆图纸
+localDir: D:\lhl_code\pic-to-pindou\dist
+appType: web
+entryHtml: index.html
