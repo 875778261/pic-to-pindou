@@ -59,6 +59,23 @@ npm run preview # 本地以生产模式预览 http://localhost:4173
 >
 > 本仓库当前 `main` = `a6feb1e`（仅 docs）→ 选 `main` 必挂；`develop` = `b3514d1`（完整源码）→ 可构建。
 
+> ⚠️ **lockfile 平台覆盖检查（第二个坑，比第一个更隐蔽）**
+>
+> 现象：Linux 构建机上报
+> `Error: Cannot find native binding` / `Cannot find module '@rolldown/binding-linux-x64-gnu'`。
+> 根因：仓库的 `package-lock.json` 是**增量安装**出来的，只记录了 Windows 平台的二进制包（66 条，`@rolldown/binding-win32-x64-msvc`、`@esbuild/win32-x64`、`@tailwindcss/oxide-win32-x64-msvc`、`lightningcss-win32-x64-msvc` 各一条），Linux 平台的等价包一条都没有。`npm ci` 严格照 lock 安装，于是 Linux 上装出来的 `rolldown` / `@tailwindcss/oxide` / `lightningcss` 全都没有可用的原生模块。
+>
+> 一行检查（Linux 平台条目数应为 20+，为 0 就是这个问题）：
+>
+> ```bash
+> node -e "const l=require('./package-lock.json');console.log(Object.keys(l.packages).filter(k=>k.includes('linux')).length)"
+> ```
+>
+> 修法：删掉 lock 重新生成，让它记录全部平台产物（本仓库实测 66 → 119 条，linux 26 条）。
+> **`npm install --package-lock-only` 不会修复已有的 lock**（它照抄旧内容），必须 `rm` 掉 lock 再装。
+>
+> 另注：`@biomejs/biome` 需钉在 `2.6.2`。2.6.3 的 `@biomejs/cli-win32-x64` 在 npmmirror 上 404，重新解析会跳到 2.6.3，导致本机 `npm run lint` 找不到二进制。
+
 ### A1. Cloudflare 侧一次性配置
 
 1. 注册 <https://dash.cloudflare.com>（免费，无需信用卡）。
@@ -130,7 +147,9 @@ Cloudflare 每次 push 都会留一个可回滚的 Deployment，旧版本在 Dep
 
 ---
 
-## 四、方案 B（备选）：Cloudflare Workers Static Assets
+## 四、方案 B（本项目实际走的路径）：Cloudflare Workers Static Assets
+
+> 2026-10-27 补充：实际在 Cloudflare 上建的**就是 Workers 项目**（Deploy command 为 `npx wrangler deploy`），流程与本方案一致。因此 `wrangler.jsonc` 不是可选项 —— 没有它 `wrangler deploy` 直接报错 `Missing entry-point`，构建通过也发不出去。
 
 Cloudflare 已把 Workers Static Assets 作为 2026 年新项目的推荐路径（Pages 仍完整支持、不废弃，但新功能先落在 Workers）。
 
@@ -140,15 +159,17 @@ Cloudflare 已把 Workers Static Assets 作为 2026 年新项目的推荐路径�
 
 ```jsonc
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pic-to-pindou",
-  "compatibility_date": "2026-10-26",
+  "compatibility_date": "2026-10-27",
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application"
   }
 }
 ```
+
+> `name` 必须与 Cloudflare 上的 Worker 服务名一致（本仓库为 `pic-to-pindou`），否则会新建出第二个服务。
+> 本地可先用 `npx wrangler deploy --dry-run` 验配置（不需要登录、不会真发布）：正常输出 `Read 6 files from the assets directory .../dist`。
 
 `package.json` 增加脚本：
 
@@ -284,6 +305,8 @@ server {
 ## 八、上线前检查清单
 
 - [ ] `npm run build` 本地通过，`dist/index.html` 与 `dist/assets/*` 齐全
+- [ ] `package-lock.json` 覆盖 Linux 平台产物（`node -e` 检查 linux 条目 > 20，为 0 则 CI 必挂）
+- [ ] 根目录有 `wrangler.jsonc`（Workers 项目）或 Pages 已设 output `dist`
 - [ ] `npm run preview` 下手动验证：拖图 → 调参数 → 预览 → 逐格涂色 → 撤销 → 导出 PNG 全流程
 - [ ] 生产环境确认 `NODE_VERSION=22` 已设置（否则 Vite 8 可能构建失败）
 - [ ] 确认部署分支是 `develop`（`main` 目前只有 docs，无 `package.json`）
