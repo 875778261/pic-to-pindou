@@ -465,30 +465,8 @@ export function PreviewStage({
     >
       {pattern ? (
         <>
-          <div ref={attachSurface} className="relative min-h-0 flex-1">
-            <canvas
-              ref={attachCanvas}
-              aria-label={
-                editing
-                  ? '图纸预览，编辑中：拖动涂色，按住空格拖动平移'
-                  : '图纸预览，可缩放平移；点一颗豆把它标成不摆豆'
-              }
-              className={`absolute inset-0 touch-none ${cursor}`}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={(event) => {
-                releasePointer(event.pointerId)
-                dragRef.current = null
-                // 已经落到图纸上的那一笔照样算一步，不留在半空
-                if (strokeRef.current) {
-                  strokeRef.current = null
-                  commitPaint()
-                }
-              }}
-              onDoubleClick={editing ? undefined : handleDoubleClick}
-            />
-
+          {/* 顶部留出工具条那条：图案贴顶后浮层会压住它，留白归布局，几何层不掺（ADR-0016） */}
+          <div className="relative flex min-h-0 flex-1 flex-col pt-11">
             <div className="absolute top-2 right-2 flex items-center gap-2">
               {pickedCode ? (
                 <span className="rounded-md bg-neutral-900/75 px-2 py-1 text-[10px] text-white">
@@ -539,31 +517,56 @@ export function PreviewStage({
               </button>
             </div>
 
-            {pendingDiscard !== null ? (
-              <div
-                role="alertdialog"
-                aria-label="重算会丢弃手改"
-                className="absolute top-2 left-1/2 flex -translate-x-1/2 flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 shadow-lg"
-              >
-                <p className="text-amber-900 text-xs">重算会丢弃 {pendingDiscard} 处手改。</p>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    className="rounded-md border border-amber-300 bg-white px-2 py-1 text-amber-900 text-xs hover:border-amber-500"
-                    onClick={cancelDiscard}
-                  >
-                    放弃改动
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-md bg-neutral-900 px-2 py-1 text-white text-xs hover:bg-neutral-800"
-                    onClick={confirmDiscard}
-                  >
-                    继续重算
-                  </button>
+            <div ref={attachSurface} className="relative min-h-0 flex-1">
+              <canvas
+                ref={attachCanvas}
+                aria-label={
+                  editing
+                    ? '图纸预览，编辑中：拖动涂色，按住空格拖动平移'
+                    : '图纸预览，可缩放平移；点一颗豆把它标成不摆豆'
+                }
+                className={`absolute inset-0 touch-none ${cursor}`}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={(event) => {
+                  releasePointer(event.pointerId)
+                  dragRef.current = null
+                  // 已经落到图纸上的那一笔照样算一步，不留在半空
+                  if (strokeRef.current) {
+                    strokeRef.current = null
+                    commitPaint()
+                  }
+                }}
+                onDoubleClick={editing ? undefined : handleDoubleClick}
+              />
+
+              {pendingDiscard !== null ? (
+                <div
+                  role="alertdialog"
+                  aria-label="重算会丢弃手改"
+                  className="absolute top-2 left-1/2 flex -translate-x-1/2 flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 shadow-lg"
+                >
+                  <p className="text-amber-900 text-xs">重算会丢弃 {pendingDiscard} 处手改。</p>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      className="rounded-md border border-amber-300 bg-white px-2 py-1 text-amber-900 text-xs hover:border-amber-500"
+                      onClick={cancelDiscard}
+                    >
+                      放弃改动
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md bg-neutral-900 px-2 py-1 text-white text-xs hover:bg-neutral-800"
+                      onClick={confirmDiscard}
+                    >
+                      继续重算
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
           {editing && !fill ? <PaintBar pattern={pattern} /> : null}
           {fill ? null : (

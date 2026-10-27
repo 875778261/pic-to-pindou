@@ -26,7 +26,7 @@ describe('预览视口', () => {
     expect(29 * cellSize).toBeLessThanOrEqual(290)
   })
 
-  it('网格比视口小时居中，比视口大时贴住左上不留空', () => {
+  it('横向装得下居中、装不下贴边；纵向始终贴着上沿', () => {
     const small = placement(viewOf())
     expect(small.originX).toBeCloseTo(0)
     expect(small.originY).toBeCloseTo(0)
@@ -35,6 +35,31 @@ describe('预览视口', () => {
     expect(wide.cellSize).toBeCloseTo(700 / 29)
     expect(wide.originX).toBeCloseTo((900 - 29 * wide.cellSize) / 2)
     expect(wide.originY).toBeCloseTo(0)
+  })
+
+  it('横向的图贴顶，不掉到画布中线下半', () => {
+    // 29 × 12 放进 900 × 700：格宽由宽度定死，纵向空出三百多像素
+    const landscape = placement(viewOf({ cols: 29, rows: 12, width: 900, height: 700 }))
+
+    expect(landscape.cellSize).toBeCloseTo(900 / 29)
+    expect(landscape.originX).toBeCloseTo(0)
+    expect(landscape.originY).toBeCloseTo(0)
+  })
+
+  it('纵向放大后从顶上开始看，往下拖也拖不出空白', () => {
+    const zoomed = viewOf({ zoom: 2 })
+    expect(placement(zoomed).originY).toBeCloseTo(0)
+    // 已经贴着上沿，再往下拖不该让网格离开顶边
+    expect(placement({ ...zoomed, panY: 120 }).originY).toBeCloseTo(0)
+    expect(placement({ ...zoomed, panY: -120 }).originY).toBeCloseTo(-120)
+  })
+
+  it('纵向跨过装得下的临界点时原点不跳', () => {
+    const atFit = placement(viewOf())
+    const justOver = placement(viewOf({ zoom: 1.001 }))
+
+    expect(atFit.originY).toBeCloseTo(0)
+    expect(Math.abs(justOver.originY - atFit.originY)).toBeLessThan(1)
   })
 
   it('放大后可以把网格拖出视口一部分，但拖不出空白', () => {

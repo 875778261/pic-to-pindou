@@ -21,7 +21,7 @@ export type Viewport = {
   width: number
   height: number
   zoom: number
-  /** 相对「居中摆放」的偏移，CSS px */
+  /** 相对贴边摆放的偏移，CSS px；纵向基准是上沿，横向基准是居中位 */
   panX: number
   panY: number
 }
@@ -67,7 +67,8 @@ export function clampZoom(zoom: number): number {
 
 /**
  * 网格在画布上的落位。
- * 内容比视口小的那个方向始终居中；比视口大时不留空白，最多把网格边缘贴到画布边上。
+ * 横向内容比视口小就居中、比视口大时不留空白；纵向装得下就贴顶、装不下也不留空白。
+ * 纵向不居中是刻意的：横向的图放进高容器里，居中会让图案看着掉到画布下半（ADR-0016）。
  */
 export function placement(view: Viewport): Placement {
   assertViewport(view)
@@ -75,7 +76,7 @@ export function placement(view: Viewport): Placement {
   const contentWidth = view.cols * cellSize
   const contentHeight = view.rows * cellSize
 
-  const axis = (content: number, viewport: number, pan: number): number => {
+  const centredAxis = (content: number, viewport: number, pan: number): number => {
     const centred = (viewport - content) / 2
     if (content <= viewport) {
       return centred
@@ -84,10 +85,17 @@ export function placement(view: Viewport): Placement {
     return Math.min(0, Math.max(viewport - content, centred + pan))
   }
 
+  const topAxis = (content: number, viewport: number, pan: number): number => {
+    if (content <= viewport) {
+      return 0
+    }
+    return Math.min(0, Math.max(viewport - content, pan))
+  }
+
   return {
     cellSize,
-    originX: axis(contentWidth, view.width, view.panX),
-    originY: axis(contentHeight, view.height, view.panY),
+    originX: centredAxis(contentWidth, view.width, view.panX),
+    originY: topAxis(contentHeight, view.height, view.panY),
   }
 }
 
