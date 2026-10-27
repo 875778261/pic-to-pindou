@@ -29,5 +29,8 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-#临时
+# 临时
 .temp
+
+# 本地工作产出与验收证据：随时可重跑，不进版本库
+.lhl-work-output/
