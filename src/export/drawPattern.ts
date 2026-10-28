@@ -18,7 +18,9 @@ import {
 import { BLANK_CELL_HEX, INK_HEX, MUTED_INK_HEX } from '../render/colours'
 import {
   coordinateIndexes,
+  EXPORT_LIMITS,
   type ExportLayout,
+  type ExportLimits,
   LEGEND_METRICS,
   legendSlot,
   planExportLayout,
@@ -236,23 +238,45 @@ function drawLegend(
   })
 }
 
-/** 合成一张图纸；要不要下载由调用方决定，标没标色号一并交出去 */
-export function drawPatternSheet(input: PatternSheetInput): {
-  canvas: HTMLCanvasElement
-  labelled: boolean
-} {
+export type PatternSheetPlan = {
+  layout: ExportLayout
+  entries: LegendEntry[]
+  summary: string
+}
+
+/**
+ * 量文字、出排版，不建画布。
+ * 界面上的尺寸预告与真正的导出都走这里，两处报的尺寸不会各算一套。
+ */
+export function planPatternSheet(
+  input: PatternSheetInput,
+  limits: ExportLimits = EXPORT_LIMITS,
+): PatternSheetPlan {
   const { pattern, palette, beadSize } = input
   const { cols, rows } = pattern.grid
   const entries = legendEntries(pattern, palette)
   const summary = `${cols} × ${rows} 格 · 成品 ${formatPatternSize(patternSizeMm(cols, rows, beadSize))} · 共 ${totalBeads(pattern.grid)} 颗`
   const text = measureTextBlocks(summary, entries)
-  const layout = planExportLayout({
-    cols,
-    rows,
-    legendEntryCount: entries.length,
-    titleWidth: text.titleWidth,
-    legendItemWidth: text.legendItemWidth,
-  })
+  const layout = planExportLayout(
+    {
+      cols,
+      rows,
+      legendEntryCount: entries.length,
+      titleWidth: text.titleWidth,
+      legendItemWidth: text.legendItemWidth,
+    },
+    limits,
+  )
+  return { layout, entries, summary }
+}
+
+/** 合成一张图纸；要不要下载由调用方决定，排版结果一并交出去 */
+export function drawPatternSheet(
+  input: PatternSheetInput,
+  limits: ExportLimits = EXPORT_LIMITS,
+): { canvas: HTMLCanvasElement; layout: ExportLayout } {
+  const { cols, rows } = input.pattern.grid
+  const { layout, entries, summary } = planPatternSheet(input, limits)
 
   const canvas = document.createElement('canvas')
   canvas.width = layout.canvas.width
@@ -272,5 +296,5 @@ export function drawPatternSheet(input: PatternSheetInput): {
   drawCoordinates(context, layout, cols, rows)
   drawLegend(context, layout, entries)
 
-  return { canvas, labelled: layout.labelled }
+  return { canvas, layout }
 }

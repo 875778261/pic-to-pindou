@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { MIN_CODE_CELL_SIZE } from '../domain/pattern'
-import { coordinateIndexes, EXPORT_LIMITS, legendSlot, planExportLayout } from './layout'
+import {
+  coordinateIndexes,
+  EXPORT_LIMITS,
+  legendSlot,
+  planExportLayout,
+  SAFE_LIMITS,
+} from './layout'
 
 describe('导出排版', () => {
-  it('一格 24 像素，网格区域正好是格数乘格宽', () => {
+  it('一颗豆恒占 24 像素，网格区域正好是格数乘格宽', () => {
     const layout = planExportLayout({ cols: 29, rows: 29, legendEntryCount: 3 })
 
-    expect(layout.cellSize).toBe(EXPORT_LIMITS.preferredCellSize)
+    expect(layout.cellSize).toBe(EXPORT_LIMITS.cellSize)
     expect(layout.grid.width).toBe(29 * layout.cellSize)
     expect(layout.grid.height).toBe(29 * layout.cellSize)
   })
@@ -19,29 +25,38 @@ describe('导出排版', () => {
     expect(layout.canvas.width - (layout.grid.x + layout.grid.width)).toBeGreaterThan(0)
   })
 
-  it('格子塞得下色号就标，41 格起也照标', () => {
-    expect(planExportLayout({ cols: 40, rows: 40, legendEntryCount: 0 }).labelled).toBe(true)
-    expect(planExportLayout({ cols: 41, rows: 41, legendEntryCount: 0 }).labelled).toBe(true)
+  it('网格再大也照标色号：格宽恒定，不再拿它换标注', () => {
+    for (const side of [40, 41, 87, 200]) {
+      expect(planExportLayout({ cols: side, rows: side, legendEntryCount: 0 }).labelled).toBe(true)
+    }
   })
 
   it('最常用的 2 块板 29 × 58 必须标色号', () => {
     expect(planExportLayout({ cols: 29, rows: 58, legendEntryCount: 12 }).labelled).toBe(true)
   })
 
-  it('大网格缩格宽也要标，且不低于可读下限', () => {
-    for (const side of [58, 87, 200]) {
-      const layout = planExportLayout({ cols: side, rows: side, legendEntryCount: 40 })
-      expect(layout.labelled).toBe(true)
-      expect(layout.cellSize).toBeGreaterThanOrEqual(MIN_CODE_CELL_SIZE)
-      expect(layout.canvas.width * layout.canvas.height).toBeLessThanOrEqual(
-        EXPORT_LIMITS.maxCanvasArea,
-      )
-    }
+  it('声明上限内最大的方形网格仍是 24 像素', () => {
+    const layout = planExportLayout({ cols: 200, rows: 200, legendEntryCount: 0 })
+
+    expect(layout.cellSize).toBe(EXPORT_LIMITS.cellSize)
+    expect(layout.canvas.width * layout.canvas.height).toBeLessThanOrEqual(
+      EXPORT_LIMITS.maxCanvasArea,
+    )
+  })
+
+  it('安全预算装不下才降格宽，降了仍标色号', () => {
+    const layout = planExportLayout({ cols: 200, rows: 200, legendEntryCount: 0 }, SAFE_LIMITS)
+
+    expect(layout.cellSize).toBeLessThan(EXPORT_LIMITS.cellSize)
+    expect(layout.canvas.width * layout.canvas.height).toBeLessThanOrEqual(
+      SAFE_LIMITS.maxCanvasArea,
+    )
+    expect(layout.labelled).toBe(true)
   })
 
   it('连可读下限都破上限时才不标，格宽继续缩到装得下', () => {
-    // 面积上限压到 1000 万：14px 格宽要 1180 万，不标色号缩到 12px 才过
-    const tight = { ...EXPORT_LIMITS, maxCanvasArea: 10_000_000 }
+    // 上限压到 800 万：11px 格宽才过，低于标色号的下限
+    const tight = { ...EXPORT_LIMITS, maxCanvasArea: 8_000_000 }
     const layout = planExportLayout({ cols: 200, rows: 200, legendEntryCount: 40 }, tight)
 
     expect(layout.labelled).toBe(false)
@@ -71,10 +86,16 @@ describe('导出排版', () => {
     expect(sparse.coordinateStep.cols).toBe(sparse.coordinateStep.rows)
   })
 
-  it('200 × 200 会缩格宽，把画布压进单边与面积两条上限', () => {
-    const layout = planExportLayout({ cols: 200, rows: 200, legendEntryCount: 40 })
+  it('200 × 200 在声明上限内用满 24 像素', () => {
+    // 16 个色号、单条约 110px：图例一行摊开，不额外吃掉高度
+    const layout = planExportLayout({
+      cols: 200,
+      rows: 200,
+      legendEntryCount: 16,
+      legendItemWidth: 110,
+    })
 
-    expect(layout.cellSize).toBeLessThanOrEqual(EXPORT_LIMITS.preferredCellSize)
+    expect(layout.cellSize).toBe(EXPORT_LIMITS.cellSize)
     expect(layout.canvas.width).toBeLessThanOrEqual(EXPORT_LIMITS.maxCanvasSide)
     expect(layout.canvas.height).toBeLessThanOrEqual(EXPORT_LIMITS.maxCanvasSide)
     expect(layout.canvas.width * layout.canvas.height).toBeLessThanOrEqual(
@@ -82,22 +103,10 @@ describe('导出排版', () => {
     )
   })
 
-  it('尺寸不紧的网格仍按首选格宽画，不白缩', () => {
+  it('装得下的网格不会白缩', () => {
     const layout = planExportLayout({ cols: 58, rows: 58, legendEntryCount: 12 })
 
-    expect(layout.cellSize).toBe(EXPORT_LIMITS.preferredCellSize)
-  })
-
-  it('更大的网格缩格宽，绝不超上限', () => {
-    const layout = planExportLayout({ cols: 400, rows: 400, legendEntryCount: 40 })
-
-    expect(layout.cellSize).toBeLessThan(EXPORT_LIMITS.preferredCellSize)
-    expect(layout.cellSize).toBeGreaterThanOrEqual(EXPORT_LIMITS.minCellSize)
-    expect(layout.canvas.width).toBeLessThanOrEqual(EXPORT_LIMITS.maxCanvasSide)
-    expect(layout.canvas.height).toBeLessThanOrEqual(EXPORT_LIMITS.maxCanvasSide)
-    expect(layout.canvas.width * layout.canvas.height).toBeLessThanOrEqual(
-      EXPORT_LIMITS.maxCanvasArea,
-    )
+    expect(layout.cellSize).toBe(EXPORT_LIMITS.cellSize)
   })
 
   it('图例排在网格下方，装得下所有条目', () => {

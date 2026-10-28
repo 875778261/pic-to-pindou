@@ -2,9 +2,11 @@
  * 把合成好的图纸交给用户。
  *
  * 只做「画布 → PNG 文件 → 浏览器下载」这一段，不掺排版也不掺画法。
+ * 24 像素/颗画不出来时退到安全预算重排一次，降了就如实报出去（ADR-0017）。
  */
 
 import { drawPatternSheet, type PatternSheetInput } from './drawPattern'
+import { SAFE_LIMITS } from './layout'
 
 export type ExportResult = {
   fileName: string
@@ -12,6 +14,10 @@ export type ExportResult = {
   height: number
   /** 这张图纸有没有在格内标色号，用来如实回报给用户 */
   labelled: boolean
+  /** 一颗豆实际占的像素。被上限压过时小于 24 */
+  cellSize: number
+  /** 24 像素/颗没画出来，格宽被压过 */
+  degraded: boolean
 }
 
 /** 文件名里去掉路径分隔符与系统不收的字符，其余照原样保留（中文名照样能用） */
@@ -21,15 +27,10 @@ function sanitiseFileNameBase(base: string): string {
   return cleaned || '拼豆图纸'
 }
 
-function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) {
-        resolve(blob)
-      } else {
-        reject(new Error('PNG 编码失败，可能是图纸太大'))
-      }
-    }, 'image/png')
+/** 编码不出图时给 null，让调用方决定要不要换预算重来 */
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), 'image/png')
   })
 }
 
@@ -49,8 +50,19 @@ export async function exportPatternSheet(
   input: PatternSheetInput,
   fileNameBase: string,
 ): Promise<ExportResult> {
-  const sheet = drawPatternSheet(input)
-  const blob = await canvasToBlob(sheet.canvas)
+  const primary = drawPatternSheet(input)
+  let sheet = primary
+  let blob = await canvasToBlob(sheet.canvas)
+
+  if (!blob) {
+    // 这台设备画不出声明上限内的尺寸，退到安全预算重排一次
+    sheet = drawPatternSheet(input, SAFE_LIMITS)
+    blob = await canvasToBlob(sheet.canvas)
+  }
+  if (!blob) {
+    throw new Error('这台设备画不出这么大的图，把网格改小一些再导出')
+  }
+
   const { cols, rows } = input.pattern.grid
   // 同一张网格在三种豆规格下是三个不同成品，规格要进文件名
   const fileName = `${sanitiseFileNameBase(fileNameBase)}-${cols}x${rows}-${input.beadSize.diameterMm}mm.png`
@@ -59,6 +71,8 @@ export async function exportPatternSheet(
     fileName,
     width: sheet.canvas.width,
     height: sheet.canvas.height,
-    labelled: sheet.labelled,
+    labelled: sheet.layout.labelled,
+    cellSize: sheet.layout.cellSize,
+    degraded: sheet.layout.cellSize < primary.layout.cellSize,
   }
 }

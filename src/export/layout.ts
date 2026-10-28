@@ -8,22 +8,29 @@
 import { cellFitsCode } from '../domain/pattern'
 
 export type ExportLimits = {
-  /** 一格画多大。格子够大，色号才塞得进格内 */
-  preferredCellSize: number
+  /** 一颗豆占的像素。恒定值，不是搜索起点：图纸随格数变长，不为装进上限而缩小（ADR-0017） */
+  cellSize: number
   /** 缩到再小就认不出格了，宁可到此为止 */
   minCellSize: number
   /** 画布单边上限：超过这个尺寸的图在手机上打不开 */
   maxCanvasSide: number
-  /** 画布总面积上限。iOS Safari 的画布上限约 1670 万像素，超过就编码不出图 */
+  /** 画布总面积上限。超了 toBlob 编码不出图 */
   maxCanvasArea: number
 }
 
+/** 声明上限盖住支持范围内最大的图纸：200 × 200 @ 24px = 4912 × 5034 = 24.7M */
 export const EXPORT_LIMITS: ExportLimits = {
-  preferredCellSize: 24,
+  cellSize: 24,
   minCellSize: 4,
   maxCanvasSide: 8192,
-  maxCanvasArea: 16_777_216,
+  maxCanvasArea: 25_000_000,
 }
+
+/**
+ * 编码失败后重排用的预算。
+ * iOS Safari 的画布面积上限约 1670 万像素，超了 toBlob 直接给 null（ADR-0017）。
+ */
+export const SAFE_LIMITS: ExportLimits = { ...EXPORT_LIMITS, maxCanvasArea: 16_777_216 }
 
 /**
  * 坐标「每格都标」的格数上限。
@@ -62,7 +69,7 @@ export type Rect = { x: number; y: number; width: number; height: number }
 
 export type ExportLayout = {
   cellSize: number
-  /** 格内标不标色号。排版的结果而非输入：格宽是这里算出来的（ADR-0015） */
+  /** 格内标不标色号。按最终格宽判，格宽不为它让步（ADR-0015、ADR-0017） */
   labelled: boolean
   /** 行列号每隔几格标一次 */
   coordinateStep: { cols: number; rows: number }
@@ -131,10 +138,6 @@ export function legendSlot(index: number, columns: number): { column: number; ro
   return { column: index % columns, row: Math.floor(index / columns) }
 }
 
-function clampCellSize(value: number, limits: ExportLimits): number {
-  return Math.max(limits.minCellSize, Math.min(limits.preferredCellSize, value))
-}
-
 export function planExportLayout(
   input: ExportLayoutInput,
   limits: ExportLimits = EXPORT_LIMITS,
@@ -183,25 +186,19 @@ export function planExportLayout(
   }
 
   /**
-   * 从首选格宽往下试，取第一个装得进上限的；`allowed` 说不行的档宽就不再往下试。
-   * 一路试到最小格宽都装不进给 null。
+   * 格宽从固定值往下让，取第一个装得进上限的。让到最小格宽还装不进就按最小格宽出图，
+   * 让编码那一步去失败 —— 这里再退也没有更小的尺度了。
    */
-  const fitCellSize = (allowed: (cellSize: number) => boolean): number | null => {
-    for (let cellSize = limits.preferredCellSize; cellSize >= limits.minCellSize; cellSize -= 1) {
-      if (!allowed(cellSize)) {
-        return null
-      }
+  const fitCellSize = (): number => {
+    for (let cellSize = limits.cellSize; cellSize >= limits.minCellSize; cellSize -= 1) {
       if (fitsCaps(cellSize)) {
         return cellSize
       }
     }
-    return null
+    return limits.minCellSize
   }
 
-  // 带格内色号的那条路走到可读下限为止；走不通才退回不标注，继续缩到装得下
-  const labelledSize = fitCellSize(cellFitsCode)
-  const cellSize =
-    labelledSize ?? clampCellSize(fitCellSize(() => true) ?? limits.minCellSize, limits)
+  const cellSize = fitCellSize()
 
   const paper = paperAt(cellSize)
   const grid: Rect = {
@@ -213,7 +210,7 @@ export function planExportLayout(
 
   return {
     cellSize,
-    labelled: labelledSize !== null,
+    labelled: cellFitsCode(cellSize),
     coordinateStep: { cols: coordinateStepFor(cols), rows: coordinateStepFor(rows) },
     grid,
     legend: {
