@@ -18,7 +18,7 @@ export type ExportLimits = {
   maxCanvasArea: number
 }
 
-/** 声明上限盖住支持范围内最大的图纸：200 × 200 @ 24px = 4912 × 5034 = 24.7M */
+/** 面积上限。取「支持范围内最大的图纸仍能用满固定格宽」的那个值 */
 export const EXPORT_LIMITS: ExportLimits = {
   cellSize: 24,
   minCellSize: 4,
@@ -27,8 +27,7 @@ export const EXPORT_LIMITS: ExportLimits = {
 }
 
 /**
- * 编码失败后重排用的预算。
- * iOS Safari 的画布面积上限约 1670 万像素，超了 toBlob 直接给 null（ADR-0017）。
+ * 编码失败后重排用的预算：iOS Safari 的画布面积上限（ADR-0017）。
  */
 export const SAFE_LIMITS: ExportLimits = { ...EXPORT_LIMITS, maxCanvasArea: 16_777_216 }
 
@@ -186,8 +185,8 @@ export function planExportLayout(
   }
 
   /**
-   * 格宽从固定值往下让，取第一个装得进上限的。让到最小格宽还装不进就按最小格宽出图，
-   * 让编码那一步去失败 —— 这里再退也没有更小的尺度了。
+   * 格宽从固定值往下让，取第一个装得进上限的。让到最小格宽仍装不进就按最小格宽出图：
+   * 宁可交出一张超上限的排版，也不在这里拒绝导出。
    */
   const fitCellSize = (): number => {
     for (let cellSize = limits.cellSize; cellSize >= limits.minCellSize; cellSize -= 1) {
@@ -226,4 +225,9 @@ export function planExportLayout(
     header: { x: grid.x, y: MARGIN, lineHeight: 28 },
     canvas: { width: paper.width, height: paper.height },
   }
+}
+
+/** 这张排版超出安全预算：手机上可能画不出来，得退到 `SAFE_LIMITS` 重排 */
+export function exceedsSafeBudget(layout: ExportLayout): boolean {
+  return layout.canvas.width * layout.canvas.height > SAFE_LIMITS.maxCanvasArea
 }

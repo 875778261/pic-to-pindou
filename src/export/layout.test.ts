@@ -25,10 +25,12 @@ describe('导出排版', () => {
     expect(layout.canvas.width - (layout.grid.x + layout.grid.width)).toBeGreaterThan(0)
   })
 
-  it('网格再大也照标色号：格宽恒定，不再拿它换标注', () => {
-    for (const side of [40, 41, 87, 200]) {
-      expect(planExportLayout({ cols: side, rows: side, legendEntryCount: 0 }).labelled).toBe(true)
-    }
+  it('安全预算内格宽不降，多一格就降一档', () => {
+    const fits = planExportLayout({ cols: 164, rows: 164, legendEntryCount: 0 }, SAFE_LIMITS)
+    const tight = planExportLayout({ cols: 165, rows: 165, legendEntryCount: 0 }, SAFE_LIMITS)
+
+    expect(fits.cellSize).toBe(EXPORT_LIMITS.cellSize)
+    expect(tight.cellSize).toBeLessThan(EXPORT_LIMITS.cellSize)
   })
 
   it('最常用的 2 块板 29 × 58 必须标色号', () => {
@@ -47,7 +49,7 @@ describe('导出排版', () => {
   it('安全预算装不下才降格宽，降了仍标色号', () => {
     const layout = planExportLayout({ cols: 200, rows: 200, legendEntryCount: 0 }, SAFE_LIMITS)
 
-    expect(layout.cellSize).toBeLessThan(EXPORT_LIMITS.cellSize)
+    expect(layout.cellSize).toBe(19)
     expect(layout.canvas.width * layout.canvas.height).toBeLessThanOrEqual(
       SAFE_LIMITS.maxCanvasArea,
     )

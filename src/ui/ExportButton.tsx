@@ -11,7 +11,7 @@ import { paletteById } from '../domain/palette/registry'
 import { exportPatternSheet } from '../export/downloadPng'
 import { planPatternSheet } from '../export/drawPattern'
 import { estimateSheetBytes } from '../export/estimate'
-import { EXPORT_LIMITS, SAFE_LIMITS } from '../export/layout'
+import { EXPORT_LIMITS, exceedsSafeBudget, SAFE_LIMITS } from '../export/layout'
 import { useConversion } from '../state/store'
 
 type ExportPhase = 'idle' | 'working' | 'done' | 'failed'
@@ -45,9 +45,8 @@ export function ExportButton() {
       beadSize: beadSizeById(beadSizeId),
     }
     const primary = planPatternSheet(input)
-    const area = primary.layout.canvas.width * primary.layout.canvas.height
-    // 只在这张图确实超过安全预算时才多排一次：预告里要给手机上那次降级报个具体数
-    const safe = area > SAFE_LIMITS.maxCanvasArea ? planPatternSheet(input, SAFE_LIMITS) : null
+    // 只在这张图确实超出安全预算时才多排一次：预告里要给降级后的格宽报个具体数
+    const safe = exceedsSafeBudget(primary.layout) ? planPatternSheet(input, SAFE_LIMITS) : null
     return { input, primary, safe }
   }, [pattern, beadSizeId])
 
@@ -64,9 +63,10 @@ export function ExportButton() {
         ? '格内已标色号'
         : '图纸过大，格内未标色号，按行列坐标配图例摆'
       const sizeNote = `（${result.width} × ${result.height} 像素，${result.cellSize} 像素/颗）`
-      const degradeNote = result.degraded
-        ? `；${EXPORT_LIMITS.cellSize} 像素在这台设备上画不出来，已降级`
-        : ''
+      const degradeNote =
+        result.cellSize < EXPORT_LIMITS.cellSize
+          ? `；${EXPORT_LIMITS.cellSize} 像素超出这台设备的画布上限，已降级`
+          : ''
       setMessage(`已生成 ${result.fileName}${sizeNote}${degradeNote}，${labelNote}`)
     } catch (error) {
       setPhase('failed')

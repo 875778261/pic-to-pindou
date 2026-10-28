@@ -16,8 +16,6 @@ export type ExportResult = {
   labelled: boolean
   /** 一颗豆实际占的像素。被上限压过时小于 24 */
   cellSize: number
-  /** 24 像素/颗没画出来，格宽被压过 */
-  degraded: boolean
 }
 
 /** 文件名里去掉路径分隔符与系统不收的字符，其余照原样保留（中文名照样能用） */
@@ -50,8 +48,7 @@ export async function exportPatternSheet(
   input: PatternSheetInput,
   fileNameBase: string,
 ): Promise<ExportResult> {
-  const primary = drawPatternSheet(input)
-  let sheet = primary
+  let sheet = drawPatternSheet(input)
   let blob = await canvasToBlob(sheet.canvas)
 
   if (!blob) {
@@ -60,7 +57,7 @@ export async function exportPatternSheet(
     blob = await canvasToBlob(sheet.canvas)
   }
   if (!blob) {
-    throw new Error('这台设备画不出这么大的图，把网格改小一些再导出')
+    throw new Error('24 像素与降级后的格宽都没能编码成功，把网格改小一些再导出')
   }
 
   const { cols, rows } = input.pattern.grid
@@ -73,6 +70,5 @@ export async function exportPatternSheet(
     height: sheet.canvas.height,
     labelled: sheet.layout.labelled,
     cellSize: sheet.layout.cellSize,
-    degraded: sheet.layout.cellSize < primary.layout.cellSize,
   }
 }
